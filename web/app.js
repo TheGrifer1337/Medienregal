@@ -564,7 +564,10 @@ function openSettings() {
   if (!state.prefs) return;
   const inner=show('Einstellungen');
   const update=updateControls();
-  inner.append(update.controls,button('Streamingverlauf importieren',openHistory,'quiet settings-import'));
+  const imports=text('div',null,'history-actions');
+  imports.append(button('Streamingverlauf importieren',openHistory,'quiet'),
+    button('Streamingimport rückgängig machen',openHistoryUndo,'quiet'));
+  inner.append(update.controls,imports);
   update.refresh();
   const form=text('form',null,'settings-form');
   const providers=providerPicker();

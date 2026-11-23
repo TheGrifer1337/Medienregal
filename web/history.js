@@ -131,3 +131,48 @@ function showHistoryPreview(groups) {
   inner.append(actions,count,rows,pages,error,footer);
   groupChanged();
 }
+
+async function openHistoryUndo() {
+  const inner=show('Streamingimport rückgängig machen');
+  const feedback=text('p','Prüfe importierte Titel …','form-note');
+  feedback.setAttribute('role','status');
+  inner.append(feedback);
+  try {
+    const preview=await api('history/undo');
+    if (!modal.open || !inner.isConnected) return;
+    const actionable=preview.removed+preview.restored;
+    const total=preview.removed+' Titel entfernen · '+preview.restored+' auf „Möchte ich sehen“ zurücksetzen';
+    feedback.textContent=actionable?total:'Es gibt keine passenden Importeinträge zum Rückgängigmachen.';
+    if (preview.mode==='older' && actionable) {
+      inner.append(text('p','Bei älteren Importen kann die App nur neu hinzugefügte Titel erkennen. Die Auswahl kann Einträge aus mehreren Verlaufsimporten enthalten.','form-note'));
+    }
+    if (preview.preserved) {
+      inner.append(text('p',preview.preserved+' nachträglich bearbeitete Importeinträge bleiben erhalten.','form-note'));
+    }
+    if (preview.examples.length) {
+      const examples=text('details');
+      examples.append(text('summary',actionable>preview.examples.length?'Beispiele anzeigen':'Betroffene Titel anzeigen'));
+      const list=text('ul');
+      for (const title of preview.examples) list.append(text('li',title));
+      examples.append(list);
+      inner.append(examples);
+    }
+    if (!actionable) return;
+    const actions=text('div',null,'dialog-actions');
+    const confirmUndo=button(preview.mode==='older'?'Importierte Titel entfernen':'Letzten Import rückgängig machen',async()=>{
+      confirmUndo.disabled=true;
+      try {
+        const result=await api('history/undo','POST',{token:preview.token});
+        state.entries=result.entries;
+        render();
+        $('notice').textContent=result.removed+' importierte Titel entfernt · '+result.restored+' Status zurückgesetzt';
+        if (inner.isConnected) modal.close();
+      } catch(e) {
+        feedback.textContent=e.message;
+        confirmUndo.disabled=false;
+      }
+    },'accent');
+    actions.append(button('Abbrechen',()=>modal.close(),'quiet'),confirmUndo);
+    inner.append(actions);
+  } catch(e) { feedback.textContent=e.message; }
+}

@@ -53,8 +53,9 @@ type settings struct {
 }
 
 type library struct {
-	Entries  []entry  `json:"entries"`
-	Settings settings `json:"settings"`
+	Entries           []entry         `json:"entries"`
+	Settings          settings        `json:"settings"`
+	LastHistoryImport []historyChange `json:"lastHistoryImport,omitempty"`
 }
 
 type app struct {
@@ -272,6 +273,8 @@ func (a *app) routes() *http.ServeMux {
 	})
 	mux.HandleFunc("POST /api/history/preview", a.previewHistory)
 	mux.HandleFunc("POST /api/history/import", a.importHistory)
+	mux.HandleFunc("GET /api/history/undo", a.historyUndo)
+	mux.HandleFunc("POST /api/history/undo", a.historyUndo)
 	mux.HandleFunc("POST /api/open-link", func(w http.ResponseWriter, r *http.Request) {
 		var request struct{ URL string }
 		if !decode(w, r, &request) {

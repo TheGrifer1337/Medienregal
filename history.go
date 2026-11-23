@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -34,6 +33,7 @@ type historyResult struct {
 	Updated int     `json:"updated"`
 	Skipped int     `json:"skipped"`
 	Entries []entry `json:"entries"`
+	changes []historyChange
 }
 
 func historyKey(value string) string {
@@ -208,13 +208,10 @@ func mergeHistory(existing []entry, titles []historyTitle) historyResult {
 	}
 	for _, item := range titles {
 		key := historyTitleKey(item)
-		status := "seen"
-		if item.Kind == "series" {
-			status = "started"
-		}
+		status := historyStatus(item.Kind)
 		matches := index[key]
 		if len(matches) == 0 {
-			id := fmt.Sprintf("manual:history-%x", sha256.Sum256([]byte(key)))
+			id := historyID(item)
 			// Renamed imports can already own the original ID.
 			if ids[id] {
 				result.Skipped++
@@ -223,8 +220,10 @@ func mergeHistory(existing []entry, titles []historyTitle) historyResult {
 			ids[id] = true
 			index[key] = []int{len(result.Entries)}
 			result.Entries = append(result.Entries, entry{ID: id, Kind: item.Kind, Title: item.Title, Status: status, Source: "Streamingverlauf"})
+			result.changes = append(result.changes, historyChange{ID: id})
 			result.Added++
 		} else if len(matches) == 1 && result.Entries[matches[0]].Status == "want" {
+			result.changes = append(result.changes, historyChange{ID: result.Entries[matches[0]].ID, PreviousStatus: "want"})
 			result.Entries[matches[0]].Status = status
 			result.Updated++
 		} else {
@@ -254,6 +253,7 @@ func (a *app) importHistory(w http.ResponseWriter, r *http.Request) {
 	if result.Added+result.Updated > 0 {
 		next := a.data
 		next.Entries = result.Entries
+		next.LastHistoryImport = result.changes
 		if err := writeLibrary(a.path, next); err != nil {
 			fail(w, 500, "Die Auswahl konnte nicht gespeichert werden.")
 			return
