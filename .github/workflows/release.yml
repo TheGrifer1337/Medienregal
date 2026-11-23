@@ -1,0 +1,54 @@
+name: Windows-Release
+on:
+  push:
+    branches: [main]
+    paths: [VERSION]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: medienregal-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+          cache: false
+      - name: Prüfen und Installer bauen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis
+          go vet ./...
+          go test ./...
+          bash build.sh "$GITHUB_REPOSITORY"
+      - name: Neue Version veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(<VERSION)
+          tag="v$version"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag ist bereits veröffentlicht."
+            exit 0
+          fi
+          current="${version/./}"
+          releases="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')"
+          highest=9
+          while IFS= read -r published; do
+            if [[ "$published" =~ ^v(0|[1-9][0-9]*)\.[0-9]$ ]]; then
+              numeric="${published:1}"
+              numeric="${numeric/./}"
+              if (( numeric > highest )); then highest=$numeric; fi
+            fi
+          done <<< "$releases"
+          if (( current != highest + 1 )); then
+            echo "Die Versionsnummer muss direkt auf den letzten Release folgen."
+            exit 1
+          fi
+          gh release create "$tag" "dist/Medienregal-Setup-$tag.exe" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "Medienregal $version" --generate-notes
