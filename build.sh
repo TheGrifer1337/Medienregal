@@ -13,7 +13,7 @@ if [[ ! -s "$bootstrapper" ]]; then
   mv "$bootstrapper.part" "$bootstrapper"
 fi
 "${GO_BIN:-go}" run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64 --manifest gui \
-  --icon winres/bookshelf.ico --file-description 'Medatheke by Maximilian' --product-name 'Medatheke by Maximilian' \
+  --icon winres/bookshelf.ico --file-description 'Mediathek by Maximilian' --product-name 'Mediathek by Maximilian' \
   --original-filename Medienregal.exe --product-version "$version.0.0" --file-version "$version.0.0"
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 "${GO_BIN:-go}" build -buildvcs=false -trimpath   -ldflags "-s -w -H=windowsgui -X main.version=$version -X main.releaseRepo=$repo" -o dist/Medienregal.exe .
 "${MAKENSIS:-makensis}" -V3 "-DVERSION=$version" "-DBOOTSTRAPPER=$bootstrapper" "-DAPPEXE=dist/Medienregal.exe"   "-DOUTFILE=dist/Medienregal-Setup-v$version.exe" installer.nsi

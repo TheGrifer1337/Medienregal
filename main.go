@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-const product = "Medatheke by Maximilian"
+const product = "Mediathek by Maximilian"
 const storageName = "Medienregal"
 
 var releaseRepo = "TheGrifer1337/Medienregal"

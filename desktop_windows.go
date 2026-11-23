@@ -23,7 +23,7 @@ func lockInstance() (func(), error) {
 	}
 	if err == syscall.ERROR_ALREADY_EXISTS {
 		_ = syscall.CloseHandle(syscall.Handle(handle))
-		return nil, fmt.Errorf("Medatheke by Maximilian ist bereits geöffnet.")
+		return nil, fmt.Errorf("%s ist bereits geöffnet.", product)
 	}
 	return func() { _ = syscall.CloseHandle(syscall.Handle(handle)) }, nil
 }

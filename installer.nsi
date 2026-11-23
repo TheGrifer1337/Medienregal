@@ -1,15 +1,15 @@
 Unicode true
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
-Name "Medatheke by Maximilian"
+Name "Mediathek by Maximilian"
 OutFile "${OUTFILE}"
 InstallDir "$LOCALAPPDATA\Programs\Medienregal"
 InstallDirRegKey HKCU "Software\Medienregal" "InstallPath"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 VIProductVersion "${VERSION}.0.0"
-VIAddVersionKey "ProductName" "Medatheke by Maximilian"
-VIAddVersionKey "FileDescription" "Medatheke by Maximilian – Windows-Installer"
+VIAddVersionKey "ProductName" "Mediathek by Maximilian"
+VIAddVersionKey "FileDescription" "Mediathek by Maximilian – Windows-Installer"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 VIAddVersionKey "CompanyName" "Maximilian"
@@ -24,7 +24,7 @@ VIAddVersionKey "LegalCopyright" "Medienregal"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Medienregal.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Medatheke öffnen"
+!define MUI_FINISHPAGE_RUN_TEXT "Mediathek öffnen"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -68,7 +68,7 @@ Function DetectWebView
   detected:
 FunctionEnd
 
-Section "Medatheke by Maximilian"
+Section "Mediathek by Maximilian"
   SetShellVarContext current
   Call DetectWebView
   StrCmp $0 "" 0 runtimeReady
@@ -111,7 +111,7 @@ Section "Medatheke by Maximilian"
     IfErrors restoreAfterSwitch
     Delete "$INSTDIR\Medienregal.alt"
     WriteRegStr HKCU "Software\Medienregal" "InstallPath" "$INSTDIR"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "DisplayName" "Medatheke by Maximilian"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "DisplayName" "Mediathek by Maximilian"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "DisplayVersion" "${VERSION}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "DisplayIcon" "$INSTDIR\Medienregal.exe"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "Publisher" "Maximilian"
@@ -120,7 +120,9 @@ Section "Medatheke by Maximilian"
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "NoModify" 1
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "NoRepair" 1
     Delete "$SMPROGRAMS\Medienregal.lnk"
-    CreateShortcut "$SMPROGRAMS\Medatheke by Maximilian.lnk" "$INSTDIR\Medienregal.exe"
+    CreateShortcut "$SMPROGRAMS\Mediathek by Maximilian.lnk" "$INSTDIR\Medienregal.exe"
+    CreateShortcut "$DESKTOP\Mediathek by Maximilian.lnk" "$INSTDIR\Medienregal.exe"
+    Delete "$SMPROGRAMS\Medatheke by Maximilian.lnk"
     Goto done
   restoreAfterSwitch:
     Delete "$INSTDIR\Medienregal.exe"
@@ -130,7 +132,7 @@ Section "Medatheke by Maximilian"
   failed:
     Delete "$INSTDIR\Medienregal.neu"
     IfSilent +2
-      MessageBox MB_ICONSTOP "Die Installation ist fehlgeschlagen. Schließe Medienregal und prüfe, ob der gewählte Ordner beschreibbar ist."
+      MessageBox MB_ICONSTOP "Die Installation ist fehlgeschlagen. Schließe die Mediathek und prüfe, ob der gewählte Ordner beschreibbar ist."
     SetErrorLevel 1
     Abort
   done:
@@ -144,7 +146,8 @@ Section "Uninstall"
   Delete "$INSTDIR\Medienregal.alt"
   Delete "$INSTDIR\Medienregal.neu"
   Delete "$SMPROGRAMS\Medienregal.lnk"
-  Delete "$SMPROGRAMS\Medatheke by Maximilian.lnk"
+  Delete "$SMPROGRAMS\Mediathek by Maximilian.lnk"
+  Delete "$DESKTOP\Mediathek by Maximilian.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal"
   DeleteRegKey HKCU "Software\Medienregal"
   Delete "$INSTDIR\Medienregal-Deinstallieren.exe"
@@ -152,7 +155,7 @@ Section "Uninstall"
   Goto done
   busy:
     IfSilent +2
-      MessageBox MB_ICONEXCLAMATION "Schließe Medienregal und starte die Deinstallation erneut."
+      MessageBox MB_ICONEXCLAMATION "Schließe die Mediathek und starte die Deinstallation erneut."
     SetErrorLevel 1
     Abort
   done:

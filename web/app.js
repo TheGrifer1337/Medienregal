@@ -612,7 +612,7 @@ $('genre').addEventListener('change',event=>{ state.genre=event.target.value;ren
 $('sort').addEventListener('change',event=>{ state.sort=event.target.value;render(); });
 $('exit').addEventListener('click',async()=>{
   try { await api('exit','POST'); } catch { return; }
-  document.body.replaceChildren(text('main','Die Medatheke ist beendet.'));
+  document.body.replaceChildren(text('main','Die Mediathek ist beendet.'));
   window.close();
 });
 Promise.all([api('entries'),api('settings')]).then(([entries,prefs])=>{

@@ -41,17 +41,29 @@ jobs:
         shell: pwsh
         run: |
           $setup = (Get-ChildItem 'Medienregal-Setup-v*.exe' | Select-Object -First 1).FullName
-          $folder = Join-Path $env:RUNNER_TEMP 'Medatheke Windows Test'
+          $folder = Join-Path $env:RUNNER_TEMP 'Mediathek Windows Test'
           $program = Join-Path $folder 'Medienregal.exe'
           $uninstaller = Join-Path $folder 'Medienregal-Deinstallieren.exe'
           $entry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal'
+          $desktop = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'Mediathek by Maximilian.lnk'
+          $programs = [Environment]::GetFolderPath('Programs')
+          $startMenu = Join-Path $programs 'Mediathek by Maximilian.lnk'
+          $oldStartMenu = Join-Path $programs 'Medatheke by Maximilian.lnk'
+          $shell = New-Object -ComObject WScript.Shell
+          function Test-Shortcuts {
+            foreach ($shortcut in @($desktop, $startMenu)) {
+              if (-not (Test-Path -LiteralPath $shortcut)) { throw "Shortcut missing: $shortcut" }
+              if ($shell.CreateShortcut($shortcut).TargetPath -ne $program) { throw "Wrong shortcut target: $shortcut" }
+            }
+          }
           function Invoke-Setup([string[]]$Arguments) {
             $process = Start-Process $setup -ArgumentList $Arguments -Wait -PassThru
             if ($process.ExitCode -ne 0) { throw "Setup exit code $($process.ExitCode)" }
           }
           Invoke-Setup @('/S', "/D=$folder")
-          if ((Get-ItemProperty $entry).DisplayName -ne 'Medatheke by Maximilian') { throw 'Uninstall entry missing' }
-          if ((Get-Item $program).VersionInfo.FileDescription -ne 'Medatheke by Maximilian') { throw 'Program name missing' }
+          if ((Get-ItemProperty $entry).DisplayName -ne 'Mediathek by Maximilian') { throw 'Uninstall entry missing' }
+          if ((Get-Item $program).VersionInfo.FileDescription -ne 'Mediathek by Maximilian') { throw 'Program name missing' }
+          Test-Shortcuts
           $app = Start-Process $program -PassThru
           try {
             $found = $false
@@ -60,7 +72,7 @@ jobs:
               $app.Refresh()
               if ($app.HasExited) { throw "Desktop app exited with code $($app.ExitCode)" }
               $views = Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe' AND ParentProcessId = $($app.Id)"
-              if ($app.MainWindowTitle -eq 'Medatheke by Maximilian' -and $views) { $found = $true; break }
+              if ($app.MainWindowTitle -eq 'Mediathek by Maximilian' -and $views) { $found = $true; break }
             }
             if (-not $found) { throw 'Native window with embedded WebView2 missing' }
           } finally {
@@ -69,13 +81,19 @@ jobs:
               if (-not $app.WaitForExit(10000)) { Stop-Process -Id $app.Id -Force }
             }
           }
+          $oldShortcut = $shell.CreateShortcut($oldStartMenu)
+          $oldShortcut.TargetPath = $program
+          $oldShortcut.Save()
+          Remove-Item -LiteralPath $desktop
           Invoke-Setup @('/S', '/UPDATE', "/D=$folder")
+          Test-Shortcuts
+          if (Test-Path -LiteralPath $oldStartMenu) { throw 'Legacy start menu shortcut was not removed' }
           $removal = Start-Process $uninstaller -ArgumentList '/S' -Wait -PassThru
           foreach ($attempt in 1..16) {
             if (-not (Test-Path $program)) { break }
             Start-Sleep -Milliseconds 500
           }
-          if ((Test-Path $program) -or (Test-Path $entry)) { throw 'Uninstallation incomplete' }
+          if ((Test-Path $program) -or (Test-Path $entry) -or (Test-Path $desktop) -or (Test-Path $startMenu)) { throw 'Uninstallation incomplete' }
   publish:
     needs: test-windows
     runs-on: ubuntu-latest
@@ -113,4 +131,4 @@ jobs:
             exit 1
           fi
           gh release create "$tag" "dist/Medienregal-Setup-$tag.exe" --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "Medatheke by Maximilian $version" --generate-notes
+            --target "$GITHUB_SHA" --title "Mediathek by Maximilian $version" --generate-notes

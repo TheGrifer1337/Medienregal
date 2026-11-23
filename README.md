@@ -1,8 +1,8 @@
-# Medatheke by Maximilian
+# Mediathek by Maximilian
 
 Du wolltest immer alle deine Medien Sortiert haben hier Bitte ein Praktische Mediathek mit vielen Funktionen :D
 
-Medatheke by Maximilian ist eine persönliche Sammlung für Filme, Serien, Anime, Bücher und Manga. Die Windows-EXE startet in einem eigenen Windows-Fenster mit eingebetteter WebView2-Oberfläche. Falls die Laufzeit fehlt, installiert das Setup sie automatisch mit Internetverbindung. Die Sammlung liegt lokal unter `%APPDATA%\Medienregal\sammlung.json`. Für die Datensicherung kann diese Datei kopiert werden. Die Deinstallation über Windows behält die Sammlung.
+Mediathek by Maximilian ist eine persönliche Sammlung für Filme, Serien, Anime, Bücher und Manga. Die Windows-EXE startet in einem eigenen Windows-Fenster mit eingebetteter WebView2-Oberfläche. Falls die Laufzeit fehlt, installiert das Setup sie automatisch mit Internetverbindung. Die Sammlung liegt lokal unter `%APPDATA%\Medienregal\sammlung.json`. Für die Datensicherung kann diese Datei kopiert werden. Die Deinstallation über Windows behält die Sammlung.
 
 ## Suche und Streaming
 
@@ -26,7 +26,7 @@ Voraussetzungen für den lokalen Build unter Linux sind Go ab 1.23, Bash, cURL u
 bash build.sh TheGrifer1337/Medienregal
 ```
 
-Der Standardordner ist `%LOCALAPPDATA%\Programs\Medienregal`. Im Installer kann ein anderer beschreibbarer Ordner gewählt werden. Die Installation erfolgt pro Windows-Benutzer. Die EXE und der Installer sind für Windows x64 gebaut.
+Der Standardordner ist `%LOCALAPPDATA%\Programs\Medienregal`. Im Installer kann ein anderer beschreibbarer Ordner gewählt werden. Die Installation erfolgt pro Windows-Benutzer und legt eine Verknüpfung auf dem Desktop sowie im Startmenü an. Die EXE und der Installer sind für Windows x64 gebaut.
 
 Für GitHub ist ein eigenes öffentliches Repository vorgesehen. Lege die Dateien aus diesem Ordner im Hauptzweig `main` ab. Der Workflow veröffentlicht beim Push von `VERSION` den Installer als Release und kann für die erste Veröffentlichung auch manuell unter **Actions → Windows-Release** gestartet werden. Die `VERSION`-Datei erhöht sich für jedes Update um einen Schritt. Auf 1.9 folgt 2.0. Der erste lokale Installer ist fest auf `TheGrifer1337/Medienregal` eingestellt. Bei abweichendem Reponamen installiere zuerst den dort veröffentlichten Installer.
 
