@@ -33,7 +33,8 @@ type marcRecord struct {
 
 func (record marcRecord) internal() (entry, string, string) {
 	values := map[string]string{}
-	genres := []string{}
+	var forms, subjects, classes []string
+	var codes []string
 	for _, field := range record.Fields {
 		for _, sub := range field.Subfields {
 			key := field.Tag + sub.Code
@@ -41,16 +42,34 @@ func (record marcRecord) internal() (entry, string, string) {
 			if values[key] == "" {
 				values[key] = value
 			}
-			if field.Tag == "655" || field.Tag == "650" {
-				lower := strings.ToLower(value)
-				for _, genre := range []string{"manga", "fantasy", "horror", "science fiction", "thriller", "krimi", "mystery", "romance", "abenteuer"} {
-					if strings.Contains(lower, genre) {
-						genres = append(genres, genre)
-					}
-				}
+			if sub.Code != "a" {
+				continue
+			}
+			switch field.Tag {
+			case "655":
+				forms = append(forms, value)
+			case "650", "653", "689":
+				subjects = append(subjects, value)
+			case "082", "084":
+				codes = append(codes, value)
 			}
 		}
 	}
+	for _, code := range codes {
+		switch {
+		case code == "K":
+			classes = append(classes, "Kinder- und Jugendbuch")
+		case code == "B":
+			classes = append(classes, "Belletristik")
+		case code == "741.5" || strings.HasPrefix(code, "741.59"):
+			if strings.Contains(strings.ToLower(values["245c"]), "aus dem japanischen") {
+				classes = append(classes, "Manga")
+			} else {
+				classes = append(classes, "Comic")
+			}
+		}
+	}
+	genres := classifyBookGenres([]string{values["245b"]}, forms, subjects, classes)
 	isbn := ""
 	for _, field := range record.Fields {
 		if field.Tag != "020" {
@@ -97,7 +116,7 @@ func (record marcRecord) internal() (entry, string, string) {
 		publisher = values["260b"]
 	}
 	subtitle := strings.Trim(strings.Join([]string{author, publisher, values["264c"]}, " · "), " ·")
-	return entry{ID: "book:dnb:" + id, Kind: "book", Title: name, Subtitle: subtitle, Genres: prettyGenres(genres), Cover: "https://covers.openlibrary.org/b/isbn/" + isbn + "-M.jpg?default=false", Total: pages, Source: "Deutsche Nationalbibliothek"}, isbn, publisher
+	return entry{ID: "book:dnb:" + id, Kind: "book", Title: name, Subtitle: subtitle, Genres: genres, Cover: "https://covers.openlibrary.org/b/isbn/" + isbn + "-M.jpg?default=false", Total: pages, Source: "Deutsche Nationalbibliothek"}, isbn, publisher
 }
 
 func cql(index, value string) string {

@@ -180,6 +180,8 @@ type bookEdition struct {
 	Publishers []string
 	Covers     []int
 	Pages      int `json:"number_of_pages"`
+	Subjects   []string
+	Works      []struct{ Key string }
 }
 
 func bookCover(id int) string {
@@ -230,24 +232,10 @@ func searchBooks(ctx context.Context, query url.Values) ([]entry, error) {
 			}
 		}
 	}
-	if err := getJSON(ctx, "https://openlibrary.org/search.json?"+params.Encode(), "", &payload); err != nil {
-		return nil, err
-	}
+	searchErr := getJSON(ctx, "https://openlibrary.org/search.json?"+params.Encode(), "", &payload)
 	items := []entry{}
 	for _, book := range payload.Docs {
-		genres := []string{}
-		for _, subject := range book.Subjects {
-			lower := strings.ToLower(subject)
-			if strings.Contains(lower, "manga") {
-				genres = append(genres, "Manga")
-			}
-			for _, name := range []string{"Fantasy", "Horror", "Science Fiction", "Mystery", "Romance", "Thriller", "Crime", "History"} {
-				if strings.Contains(lower, strings.ToLower(name)) {
-					genres = append(genres, name)
-				}
-			}
-		}
-		base := entry{ID: "book:open:" + book.Key, Kind: "book", Title: book.Title, Subtitle: strings.Join(book.Authors, ", "), Cover: bookCover(book.Cover), Genres: prettyGenres(genres), Total: book.Median, Source: "Open Library"}
+		base := entry{ID: "book:open:" + book.Key, Kind: "book", Title: book.Title, Subtitle: strings.Join(book.Authors, ", "), Cover: bookCover(book.Cover), Genres: classifyBookGenres(book.Subjects), Total: book.Median, Source: "Open Library"}
 		added := false
 		for _, edition := range book.Editions.Docs {
 			id := strings.TrimPrefix(edition.Key, "/books/")
@@ -280,8 +268,11 @@ func searchBooks(ctx context.Context, query url.Values) ([]entry, error) {
 			if len(edition.Covers) > 0 {
 				cover = bookCover(edition.Covers[0])
 			}
-			items = append(items, entry{ID: "book:ol:" + strings.TrimPrefix(edition.Key, "/books/"), Kind: "book", Title: edition.Title, Subtitle: strings.Join(edition.Publishers, ", "), Cover: cover, Total: edition.Pages, Source: "Open Library"})
+			items = append(items, entry{ID: "book:ol:" + strings.TrimPrefix(edition.Key, "/books/"), Kind: "book", Title: edition.Title, Subtitle: strings.Join(edition.Publishers, ", "), Cover: cover, Total: edition.Pages, Genres: classifyBookGenres(edition.Subjects), Source: "Open Library"})
 		}
+	}
+	if len(items) == 0 && searchErr != nil {
+		return nil, searchErr
 	}
 	return items, nil
 }
@@ -338,9 +329,28 @@ func (a *app) details(w http.ResponseWriter, r *http.Request) {
 		var payload bookEdition
 		err = getJSON(ctx, "https://openlibrary.org/books/"+key+".json", "", &payload)
 		found.Total = payload.Pages
+		if err == nil && r.URL.Query().Get("genres") == "1" {
+			genreContext, cancel := context.WithTimeout(ctx, 4*time.Second)
+			defer cancel()
+			found.Genres = editionGenres(genreContext, payload)
+		}
 		if len(payload.Covers) > 0 {
 			found.Cover = bookCover(payload.Covers[0])
 		}
+	case kind == "book" && source == "open" && openLibraryWork.MatchString(key):
+		found.Genres = openWorkGenres(ctx, key)
+		err = nil
+	case kind == "book" && source == "dnb" && numericID.MatchString(key):
+		isbn := r.URL.Query().Get("isbn")
+		if isbnPattern.MatchString(isbn) {
+			genreContext, cancel := context.WithTimeout(ctx, 4*time.Second)
+			defer cancel()
+			var payload bookEdition
+			if getJSON(genreContext, "https://openlibrary.org/isbn/"+isbn+".json", "", &payload) == nil {
+				found.Genres = editionGenres(genreContext, payload)
+			}
+		}
+		err = nil
 	}
 	if err != nil {
 		fail(w, 502, "Detaildaten sind gerade nicht verfügbar.")

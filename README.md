@@ -8,6 +8,8 @@ Medatheke by Maximilian ist eine persönliche Sammlung für Filme, Serien, Anime
 
 Filme und Serien werden in Cinemeta gesucht, Bücher und Manga in der Deutschen Nationalbibliothek und Open Library. Bei Büchern kannst du Titel und Autor, Verlag und Reihe mit Bandnummer oder eine ISBN verwenden. Bei fehlenden Metadaten kannst du den Titel und die Gesamtzahl selbst eintragen oder korrigieren.
 
+Unter **Alle Genres** stehen je Bereich gängige Genres und deine eigenen Einträge zur Auswahl. Beim Hinzufügen eines Buches schlägt die App anhand der Katalogangaben ein Hauptgenre vor. Dieses kannst du ändern oder bei fehlenden Katalogangaben selbst wählen. Weitere Genres bleiben als Filter verfügbar.
+
 Für automatische Streamingangebote in „Möchte ich sehen“ trage unter **Einstellungen** einen Watchmode-API-Schlüssel für dein Land ein. Die App zeigt Abo, kostenlose Angebote, Leihen und Kaufen samt gemeldeten Preisen. Das vorgewählte Land ist Deutschland. Ein TMDB-Read-Access-Token ist optional und ergänzt Titel und Streaminganbieter. TMDB liefert hier keine Einzelpreise. Ohne Schlüssel verlinkt die App auf JustWatch. Anbieterangaben können sich ändern und bei Serien nur Teile der Serie abdecken.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB. Streamingdaten stammen von Watchmode und JustWatch (über TMDB). Katalogdaten stammen auch von Cinemeta, der Deutschen Nationalbibliothek und Open Library.

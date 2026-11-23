@@ -13,6 +13,63 @@ const modalBody = $('modal-body');
 const shelf = $('shelf');
 const number = new Intl.NumberFormat('de-DE',{maximumFractionDigits:2});
 const collator = new Intl.Collator('de',{numeric:true,sensitivity:'base'});
+const screenGenres = [
+  'Abenteuer','Action','Animation','Anime','Biografie','Dokumentation','Drama','Familie',
+  'Fantasy','Historisch','Horror','Komödie','Krieg','Krimi','Musik','Mystery',
+  'Romantik','Sci-Fi','Sport','Thriller','Übernatürlich','Western'
+];
+const genrePresets = {
+  movie:[...screenGenres,'Musical','Kurzfilm'],
+  series:[...screenGenres,'Kinderserie','Reality-TV','Sitcom','Soap','Talkshow'],
+  book:[
+    'Abenteuer','Autobiografie','Belletristik','Biografie','Bilderbuch','Comic','Dark Romance',
+    'Drama','Dystopie','Fachbuch','Fantasy','Graphic Novel','Historischer Roman','Horror',
+    'Humor & Satire','Jugendbuch','Kinder- und Jugendbuch','Kinderbuch','Kochbuch','Komödie',
+    'Krimi','Kurzgeschichten','Liebesroman','Lyrik','Manga','Mystery','Ratgeber','Reisebuch',
+    'Roman','Romantasy','Sachbuch','Sci-Fi','Thriller'
+  ]
+};
+const genreAliases = new Map([
+  ['adventure','Abenteuer'],['comedy','Komödie'],['komoedie','Komödie'],['crime','Krimi'],
+  ['documentary','Dokumentation'],['doku','Dokumentation'],['romance','Romantik'],
+  ['science fiction','Sci-Fi'],['sci fi','Sci-Fi'],['family','Familie'],['history','Historisch'],
+  ['music','Musik'],['war','Krieg'],['supernatural','Übernatürlich'],['graphic novels','Graphic Novel'],
+  ['dark romence','Dark Romance'],['dark romance','Dark Romance'],['nonfiction','Sachbuch'],
+  ['non fiction','Sachbuch'],['fiction','Belletristik'],['novel','Roman']
+]);
+const combinedScreenGenres = new Map([
+  ['action & adventure',['Action','Abenteuer']],
+  ['action & abenteuer',['Action','Abenteuer']],
+  ['science fiction & fantasy',['Sci-Fi','Fantasy']],
+  ['sci fi & fantasy',['Sci-Fi','Fantasy']],
+  ['war & politics',['Krieg','Politik']],
+  ['krieg & politik',['Krieg','Politik']]
+]);
+const broadBookGenres = new Set(['Belletristik','Roman','Kinder- und Jugendbuch','Kinderbuch','Jugendbuch']);
+
+function genreKey(value) {
+  return value.trim().toLocaleLowerCase('de-DE').normalize('NFC').replace(/[‐‑‒–—-]/g,' ').replace(/\s+/g,' ');
+}
+
+function genreLabels(kind, values) {
+  const labels=new Map();
+  const expanded=kind==='book'?values:values.flatMap(value=>combinedScreenGenres.get(genreKey(value))||[value]);
+  for (const value of expanded) {
+    const key=genreKey(value);
+    if (!key) continue;
+    let label=genreAliases.get(key) || genrePresets[kind].find(candidate=>genreKey(candidate)===key) || value.trim();
+    if (kind==='book' && label==='Romantik') label='Liebesroman';
+    const normalized=genreKey(label);
+    if (!labels.has(normalized)) labels.set(normalized,label);
+  }
+  return [...labels.values()];
+}
+
+function availableGenres(kind, extra=[]) {
+  const saved=state.entries.filter(item=>item.kind===kind).flatMap(item=>item.genres||[]);
+  return genreLabels(kind,[...genrePresets[kind],...extra,...saved]).sort(collator.compare);
+}
+
 const text = (tag, value, className) => {
   const node = document.createElement(tag);
   if (value != null) node.textContent = value;
@@ -116,11 +173,11 @@ function render() {
     node.setAttribute('aria-pressed',state.status===value);
     return node;
   }));
-  const genres=[...new Set(items.flatMap(item=>item.genres||[]))].sort(collator.compare);
-  if (!genres.includes(state.genre)) state.genre='';
-  $('genre').replaceChildren(option('','Alle Genres'),...genres.map(genre=>option(genre,genre)));
+  const genres=availableGenres(state.kind);
+  if (!genres.some(label=>genreKey(label)===state.genre)) state.genre='';
+  $('genre').replaceChildren(option('','Alle Genres'),...genres.map(genre=>option(genreKey(genre),genre)));
   $('genre').value=state.genre;
-  const visible=items.filter(item=>(!state.status||item.status===state.status)&&(!state.genre||item.genres?.includes(state.genre)));
+  const visible=items.filter(item=>(!state.status||item.status===state.status)&&(!state.genre||genreLabels(item.kind,item.genres||[]).some(genre=>genreKey(genre)===state.genre)));
   visible.sort(compare);
   shelf.replaceChildren(...visible.map(card));
   if (visible.length) return;
@@ -141,7 +198,7 @@ function compare(a,b) {
     if (x!==null && y!==null && x!==y) return state.sort==='best' ? y-x : x-y;
   }
   if (state.sort==='genre') {
-    const order=collator.compare(a.genres?.[0] || '\uffff',b.genres?.[0] || '\uffff');
+    const order=collator.compare(genreLabels(a.kind,a.genres||[])[0] || '\uffff',genreLabels(b.kind,b.genres||[])[0] || '\uffff');
     if (order) return order;
   }
   return collator.compare(a.title,b.title);
@@ -149,7 +206,10 @@ function compare(a,b) {
 
 function card(item) {
   const article=text('article',null,'card');
-  const open=button('',()=>openEditor(item),'card-button');
+  const open=button('',()=>{
+    if (item.kind==='book' && !item.genres?.length && !item.id.startsWith('manual:')) selectResult(item);
+    else openEditor(item);
+  },'card-button');
   const body=text('span',null,'card-content');
   body.append(text('strong',item.title));
   if (item.subtitle) body.append(text('small',item.subtitle));
@@ -159,6 +219,7 @@ function card(item) {
   const foot=text('div',null,'card-foot');
   foot.append(text('span',current().states[item.status],'chip'));
   if (item.status==='started') foot.append(text('small',' · '+item.progress+(item.total?' / '+item.total:'')+' '+current().unit,'muted'));
+  if (item.kind==='book' && item.genres?.length) foot.append(text('small',genreLabels(item.kind,item.genres)[0],'book-genre'));
   if (item.kind!=='book' && item.status==='want') foot.append(streamPanel(item));
   article.append(open,foot);
   return article;
@@ -262,7 +323,7 @@ function openSearch() {
       if (!found.length) results.append(text('p','Keine Treffer. Prüfe die Schreibweise oder füge den Titel manuell hinzu.','muted'));
       for (const item of found) {
         const title=text('span');
-        title.append(text('strong',item.title),text('small',[item.subtitle,item.source].filter(Boolean).join(' · ')));
+        title.append(text('strong',item.title),text('small',[item.subtitle,item.kind==='book'?item.genres?.[0]:null,item.source].filter(Boolean).join(' · ')));
         const match=button('',()=>selectResult(item),'result');
         match.append(cover(item),title); results.append(match);
       }
@@ -273,14 +334,28 @@ function openSearch() {
 
 async function selectResult(item) {
   const existing=state.entries.find(saved=>saved.id===item.id);
-  if (existing) { openEditor(existing); return; }
+  if (existing && (existing.kind!=='book' || existing.genres?.length)) { openEditor(existing); return; }
+  item=existing || item;
   const loading=show(item.title);
   const status=text('p','Lade Details …','muted');
   loading.append(status);
-  if (streamQuery(item) || item.id.startsWith('book:ol:')) {
+  const currentGenres=genreLabels(item.kind,item.genres||[]);
+  const isBook=item.kind==='book';
+  const needsGenre=isBook && currentGenres.every(genre=>broadBookGenres.has(genre));
+  const isbn=(item.cover||'').match(/^https:\/\/covers\.openlibrary\.org\/b\/isbn\/([0-9X]+)-[SML]\.jpg/)?.[1];
+  const lookup=streamQuery(item) || item.id.startsWith('book:ol:') ||
+    (needsGenre && (item.id.startsWith('book:open:') || (item.id.startsWith('book:dnb:') && isbn)));
+  if (lookup) {
+    const params={id:item.id};
+    if (needsGenre) params.genres='1';
+    if (isbn) params.isbn=isbn;
     try {
-      const details=await api(route('details',{id:item.id}));
-      item={...item,genres:details.genres?.length?details.genres:item.genres,total:details.total || item.total,cover:details.cover||item.cover};
+      const details=await api(route('details',params));
+      const incoming=details.genres||[];
+      const genres=isBook && needsGenre && incoming.length ?
+        genreLabels(item.kind,[...incoming.filter(genre=>!broadBookGenres.has(genre)),...currentGenres,...incoming]) :
+        (incoming.length?incoming:currentGenres);
+      item={...item,genres,total:details.total||item.total,cover:details.cover||item.cover};
     } catch { /* The search result can still be saved. */ }
   }
   if (modal.open && loading.isConnected) openEditor(item);
@@ -316,6 +391,57 @@ function stars(item, index, label) {
   wrap.append(row);paint();return wrap;
 }
 
+function genrePicker(item) {
+  const initial=genreLabels(item.kind,item.genres||[]);
+  const isBook=item.kind==='book';
+  const panel=text('details',null,'genre-picker');
+  const summary=text('summary');
+  const list=text('div',null,'genre-checks');
+  const names=availableGenres(item.kind,initial);
+  const extra=input('text','genre','','z. B. Steampunk, Urban Fantasy');
+  const choices=names.map(name=>{
+    const check=input('checkbox','genre-choice',name);
+    check.checked=initial.some(genre=>genreKey(genre)===genreKey(name));
+    const label=field(name,check);
+    list.append(label);
+    return check;
+  });
+  const orderedChoices=()=> {
+    const checked=choices.filter(check=>check.checked).map(check=>check.value);
+    const keys=new Set(checked.map(genreKey));
+    return [...initial.filter(name=>keys.has(genreKey(name))),...checked];
+  };
+  const selected=()=>genreLabels(item.kind,[
+    ...orderedChoices(),
+    ...extra.value.split(',')
+  ]);
+  const primary=document.createElement('select');
+  primary.name='primary-genre';
+  let preferred=initial[0]||'';
+  const update=()=>{
+    const genres=selected();
+    summary.textContent=genres.length?'Genres · '+genres.join(', '):'Genres auswählen';
+    if (isBook) {
+      primary.replaceChildren(option('','Genre auswählen'),...genres.map(name=>option(name,name)));
+      primary.value=genres.includes(preferred)?preferred:(genres[0]||'');
+    }
+  };
+  primary.addEventListener('change',()=>{ preferred=primary.value; });
+  list.addEventListener('change',update);
+  extra.addEventListener('input',update);
+  panel.append(summary,list,field('Eigene Genres (durch Komma getrennt)',extra));
+  update();
+  return {
+    panel,
+    primary:isBook?field('Hauptgenre',primary):null,
+    genres:()=> {
+      const values=selected();
+      return primary.value ? [primary.value,...values.filter(name=>name!==primary.value)] : values;
+    },
+    focus:()=>{ panel.open=true; summary.focus(); }
+  };
+}
+
 function openEditor(original) {
   const info=definitions[original.kind], item={...original,ratings:[...(original.ratings||[0,0,0])]};
   const existing=state.entries.some(saved=>saved.id===item.id);
@@ -327,11 +453,13 @@ function openEditor(original) {
   const title=input('text','title',item.title); title.required=true; title.maxLength=250;
   const subtitle=input('text','subtitle',item.subtitle);
   const coverURL=input('url','cover',item.cover);
-  const genre=input('text','genre',(item.genres||[]).join(', '));
+  const genre=genrePicker(item);
   const status=document.createElement('select'); status.name='status';
   for(const [value,label] of Object.entries(info.states)) status.append(option(value,label));
   status.value=item.status || 'want';
-  fields.append(field('Titel',title),field(item.kind==='book'?'Autor / Ausgabe':'Jahr / Zusatz',subtitle),field('Genres (durch Komma getrennt)',genre),field('Status',status));
+  fields.append(field('Titel',title),field(item.kind==='book'?'Autor / Ausgabe':'Jahr / Zusatz',subtitle),genre.panel);
+  if (genre.primary) fields.append(genre.primary);
+  fields.append(field('Status',status));
   if (item.id.startsWith('manual:')) fields.append(field('Cover-URL (optional)',coverURL));
   const progress=input('number','progress',item.progress||0);
   const total=input('number','total',item.total||'');
@@ -372,9 +500,15 @@ function openEditor(original) {
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     if (!title.value.trim()) { err.textContent='Gib einen Titel ein.'; return; }
+    const genres=genre.genres();
+    if (item.kind==='book' && !genres.length) {
+      err.textContent='Wähle mindestens ein Genre für dieses Buch.';
+      genre.focus();
+      return;
+    }
     const max=Number(total.value)||0;
     const position=status.value==='started'?Number(progress.value)||0:Math.min(item.progress||0,max||Infinity);
-    const updated={...item,title:title.value.trim(),subtitle:subtitle.value.trim(),cover:httpsURL(coverURL.value),genres:[...new Set(genre.value.split(',').map(value=>value.trim()).filter(Boolean))],status:status.value,total:max,progress:position};
+    const updated={...item,title:title.value.trim(),subtitle:subtitle.value.trim(),cover:httpsURL(coverURL.value),genres,status:status.value,total:max,progress:position};
     save.disabled=true;
     try {
       await api('entries','PUT',updated);
