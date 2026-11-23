@@ -38,6 +38,7 @@ function distinctProviders(values) {
 
 function selectedProviderOffers(offers) {
   if (!state.prefs?.providers?.length) return offers;
+  if (state.status==='want'&&state.onlySubscriptions) offers=offers.filter(offer=>offer.type==='sub');
   const selected=new Set(state.prefs.providers.map(name=>providerKey(name)));
   return offers.filter(offer=>selected.has(providerKey(offer.name,offer.type)));
 }
@@ -69,13 +70,19 @@ function providerFilter() {
   const filter=$('provider-filter');
   const show=state.kind!=='book' && state.status==='want' && state.prefs?.providers?.length>0;
   filter.hidden=!show;
+  const subscription=$('subscription-filter');
+  subscription.hidden=!show;
   if (!show) return false;
   const check=$('only-providers');
   const configured=Boolean(state.prefs.hasWatchmode||state.prefs.hasTmdb);
   check.disabled=!configured;
   check.checked=configured && state.onlyProviders;
   filter.title=configured?'':'Für diesen Filter zuerst Watchmode oder TMDB in den Einstellungen einrichten.';
-  return check.checked;
+  const abo=$('only-subscriptions');
+  abo.disabled=!configured;
+  abo.checked=configured&&state.onlySubscriptions;
+  subscription.title=filter.title;
+  return check.checked||abo.checked;
 }
 
 function filterWatchCards(items, cards) {
@@ -112,7 +119,7 @@ function filterWatchCards(items, cards) {
       resolve(null);
       return;
     }
-    loadStream(item.id).then(data=>{
+    loadStream(catalogID(item)).then(data=>{
       const offers=selectedProviderOffers(data.offers);
       resolve(data.partial && !offers.length?null:offers);
     },()=>resolve(null));

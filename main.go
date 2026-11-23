@@ -32,17 +32,24 @@ var version = "1.0"
 var assets embed.FS
 
 type entry struct {
-	ID       string   `json:"id"`
-	Kind     string   `json:"kind"`
-	Title    string   `json:"title"`
-	Subtitle string   `json:"subtitle,omitempty"`
-	Cover    string   `json:"cover,omitempty"`
-	Genres   []string `json:"genres,omitempty"`
-	Total    int      `json:"total"`
-	Progress int      `json:"progress"`
-	Status   string   `json:"status,omitempty"`
-	Ratings  [3]int   `json:"ratings"` // Each unit represents half a star.
-	Source   string   `json:"source,omitempty"`
+	ID            string   `json:"id"`
+	Kind          string   `json:"kind"`
+	Title         string   `json:"title"`
+	Subtitle      string   `json:"subtitle,omitempty"`
+	Cover         string   `json:"cover,omitempty"`
+	Genres        []string `json:"genres,omitempty"`
+	Total         int      `json:"total"`
+	Progress      int      `json:"progress"`
+	Status        string   `json:"status,omitempty"`
+	Ratings       [3]int   `json:"ratings"` // Each unit represents half a star.
+	Source        string   `json:"source,omitempty"`
+	CatalogID     string   `json:"catalogId,omitempty"`
+	Aliases       []string `json:"aliases,omitempty"`
+	Description   string   `json:"description,omitempty"`
+	Notes         string   `json:"notes,omitempty"`
+	Lists         []string `json:"lists,omitempty"`
+	CompletedYear int      `json:"completedYear,omitempty"`
+	ImportEdited  bool     `json:"importEdited,omitempty"`
 }
 
 type settings struct {
@@ -50,26 +57,30 @@ type settings struct {
 	Watchmode string   `json:"watchmode"`
 	Region    string   `json:"region"`
 	Providers []string `json:"providers,omitempty"`
+	View      string   `json:"view,omitempty"`
 }
 
 type library struct {
 	Entries           []entry         `json:"entries"`
 	Settings          settings        `json:"settings"`
 	LastHistoryImport []historyChange `json:"lastHistoryImport,omitempty"`
+	Lists             []string        `json:"lists,omitempty"`
+	Undo              *collectionUndo `json:"undo,omitempty"`
 }
 
 type app struct {
-	mu       sync.Mutex
-	path     string
-	data     library
-	token    string
-	exit     chan struct{}
-	update   updateCheck
-	lifetime context.Context
+	mu         sync.Mutex
+	path       string
+	data       library
+	token      string
+	exit       chan struct{}
+	update     updateCheck
+	lifetime   context.Context
+	fullscreen chan bool
 }
 
 var statuses = map[string][]string{
-	"movie":  {"seen", "want"},
+	"movie":  {"seen", "want", "started"},
 	"series": {"seen", "started", "want"},
 	"book":   {"read", "started", "finished", "want"},
 }
@@ -109,6 +120,9 @@ func writeLibrary(path string, data library) error {
 
 func valid(item entry) bool {
 	if item.ID == "" || len(item.ID) > 200 || strings.TrimSpace(item.Title) == "" || len(item.Title) > 600 {
+		return false
+	}
+	if len(item.Notes) > 16000 || len(item.Lists) > 100 || len(item.Description) > 20000 {
 		return false
 	}
 	if item.Total < 0 || item.Progress < 0 || (item.Total > 0 && item.Progress > item.Total) {
@@ -161,22 +175,33 @@ func (a *app) entries(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Prüfe Titel, Status, Fortschritt und Bewertung.")
 		return
 	}
-	next := a.data
-	next.Entries = make([]entry, 0, len(a.data.Entries)+1)
-	found := false
-	for _, old := range a.data.Entries {
-		if old.ID == item.ID {
-			found = true
-			if r.Method == "PUT" {
-				next.Entries = append(next.Entries, item)
-			}
-		} else {
-			next.Entries = append(next.Entries, old)
+	if r.Method == "DELETE" {
+		next := a.data
+		previous := findEntry(next.Entries, item.ID)
+		if previous != nil {
+			next.Entries = replaceEntries(next.Entries, []entry{*previous}, nil)
+			next.Undo = &collectionUndo{Before: []entry{*previous}, Label: "Titel entfernt"}
 		}
+		a.commit(w, next)
+		return
 	}
-	if !found && r.Method == "PUT" {
-		next.Entries = append(next.Entries, item)
+	next := a.data
+	previous := findEntry(next.Entries, item.ID)
+	item.Lists = canonicalLists(item.Lists, next.Lists)
+	setCompletion(&item, previous)
+	var before []entry
+	if previous != nil {
+		if equalEntry(*previous, item) {
+			reply(w, 200, true)
+			return
+		}
+		if previous.Source == "Streamingverlauf" {
+			item.ImportEdited = true
+		}
+		before = []entry{*previous}
 	}
+	next.Entries = replaceEntries(next.Entries, before, []entry{item})
+	next.Undo = &collectionUndo{Before: before, After: []entry{item}, Label: "Titel gespeichert"}
 	a.commit(w, next)
 }
 
@@ -193,7 +218,7 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if r.Method == "GET" {
-		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers})
+		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers, "view": a.data.Settings.View})
 		return
 	}
 	var request struct {
@@ -265,6 +290,26 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/search", a.search)
 	mux.HandleFunc("GET /api/details", a.details)
 	mux.HandleFunc("GET /api/streaming", a.streaming)
+	mux.HandleFunc("GET /api/collection", a.collection)
+	mux.HandleFunc("PUT /api/lists", a.customList)
+	mux.HandleFunc("PUT /api/view", a.collectionView)
+	mux.HandleFunc("POST /api/collection/undo", a.undoCollection)
+	mux.HandleFunc("POST /api/collection/merge", a.mergeCollection)
+	mux.HandleFunc("PUT /api/collection/enrich", a.enrichEntry)
+	mux.HandleFunc("GET /api/rankings", a.rankings)
+	mux.HandleFunc("POST /api/fullscreen", func(w http.ResponseWriter, r *http.Request) {
+		var request struct{ Enabled bool }
+		if !decode(w, r, &request) {
+			return
+		}
+		if a.fullscreen != nil {
+			select {
+			case a.fullscreen <- request.Enabled:
+			case <-r.Context().Done():
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /api/update", func(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, a.update.snapshot())
 	})
@@ -330,7 +375,7 @@ func serve(noLaunch bool, dataDir string) error {
 	}
 	lifetime, stop := context.WithCancel(context.Background())
 	defer stop()
-	a := &app{path: dataPath, data: data, token: hex.EncodeToString(key), exit: make(chan struct{}, 1), lifetime: lifetime,
+	a := &app{path: dataPath, data: data, token: hex.EncodeToString(key), exit: make(chan struct{}, 1), lifetime: lifetime, fullscreen: make(chan bool, 8),
 		update: updateCheck{status: updateStatus{State: "idle"}}}
 	address := listener.Addr().String()
 	localURL := "http://" + address + "/" + a.token + "/"
@@ -343,7 +388,7 @@ func serve(noLaunch bool, dataDir string) error {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https:; style-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		mux.ServeHTTP(w, r)
 	})}
 	go server.Serve(listener)
@@ -353,7 +398,7 @@ func serve(noLaunch bool, dataDir string) error {
 		return nil
 	}
 	a.update.start(lifetime)
-	windowErr := runWindow(localURL, dataDir, a.exit)
+	windowErr := runWindow(localURL, dataDir, a.exit, a.fullscreen)
 	stop()
 	shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

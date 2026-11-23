@@ -76,11 +76,15 @@ function showHistoryPreview(groups) {
     save.disabled=true;
     error.textContent='';
     try {
+      const before=new Set(state.entries.map(item=>item.id));
       const result=await api('history/import','POST',chosen);
-      state.entries=result.entries;
-      render();
+      await refreshCollection();
       $('notice').textContent=result.added+' hinzugefügt · '+result.updated+' aktualisiert · '+result.skipped+' übersprungen';
-      if (inner.isConnected) modal.close();
+      if (inner.isConnected) {
+        const added=result.entries.filter(item=>!before.has(item.id)).map(item=>item.id);
+        if (added.length) openEnrichment(added);
+        else modal.close();
+      }
     } catch(e) { error.textContent=e.message; updateCount(); }
   },'accent');
   const updateCount=()=>{
@@ -163,8 +167,7 @@ async function openHistoryUndo() {
       confirmUndo.disabled=true;
       try {
         const result=await api('history/undo','POST',{token:preview.token});
-        state.entries=result.entries;
-        render();
+        await refreshCollection();
         $('notice').textContent=result.removed+' importierte Titel entfernt · '+result.restored+' Status zurückgesetzt';
         if (inner.isConnected) modal.close();
       } catch(e) {

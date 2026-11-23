@@ -34,7 +34,12 @@ func showError(message string) {
 	user32.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(msg)), uintptr(unsafe.Pointer(title)), 0x30)
 }
 
-func runWindow(address, dataDir string, quit <-chan struct{}) error {
+func runWindow(address, dataDir string, quit <-chan struct{}, presentation <-chan bool) error {
+	// The only embedded media frame is opened by clicking a chart title.
+	const argsKey = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"
+	if args := os.Getenv(argsKey); !strings.Contains(args, "--autoplay-policy") {
+		_ = os.Setenv(argsKey, strings.TrimSpace(args+" --autoplay-policy=no-user-gesture-required"))
+	}
 	view := webview2.NewWithOptions(webview2.WebViewOptions{
 		AutoFocus:     true,
 		DataPath:      filepath.Join(dataDir, "WebView2"),
@@ -46,11 +51,18 @@ func runWindow(address, dataDir string, quit <-chan struct{}) error {
 	view.SetSize(680, 520, webview2.HintMin)
 	view.Navigate(address)
 	closed := make(chan struct{})
+	fullscreen := fullscreenWindow{handle: uintptr(view.Window())}
 	go func() {
-		select {
-		case <-quit:
-			view.Destroy()
-		case <-closed:
+		for {
+			select {
+			case <-quit:
+				view.Destroy()
+				return
+			case <-closed:
+				return
+			case enabled := <-presentation:
+				view.Dispatch(func() { fullscreen.set(enabled) })
+			}
 		}
 	}()
 	view.Run()

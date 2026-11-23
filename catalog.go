@@ -69,13 +69,17 @@ func prettyGenres(values []string) []string {
 }
 
 type cinemeta struct {
-	ID          string `json:"imdb_id"`
-	Name        string
-	Poster      string
-	ReleaseInfo string
-	Genre       []string
-	Country     string
-	Videos      []struct {
+	ID             string `json:"imdb_id"`
+	Name           string
+	Poster         string
+	ReleaseInfo    string
+	Description    string
+	Trailers       []struct{ Source, Type string }
+	TrailerStreams []struct{ YtID string }
+	Trailer        []string
+	Genre          []string
+	Country        string
+	Videos         []struct {
 		Season  int
 		Episode int
 	}
@@ -101,7 +105,7 @@ func (movie cinemeta) internal(kind string) entry {
 		}
 		episodes = len(seen)
 	}
-	return entry{ID: kind + ":imdb:" + movie.ID, Kind: kind, Title: movie.Name, Subtitle: movie.ReleaseInfo, Cover: movie.Poster, Genres: prettyGenres(genres), Total: episodes, Source: "Cinemeta"}
+	return entry{ID: kind + ":imdb:" + movie.ID, Kind: kind, Title: movie.Name, Subtitle: movie.ReleaseInfo, Cover: movie.Poster, Genres: prettyGenres(genres), Total: episodes, Source: "Cinemeta", Description: limitDescription(movie.Description)}
 }
 
 func searchCinemeta(ctx context.Context, kind, query string) ([]entry, error) {
@@ -123,10 +127,20 @@ func searchCinemeta(ctx context.Context, kind, query string) ([]entry, error) {
 }
 
 type tmdbTitle struct {
-	ID      int
-	Title   string
-	Name    string
-	Poster  string `json:"poster_path"`
+	ID            int
+	Title         string
+	Name          string
+	Poster        string `json:"poster_path"`
+	OriginalTitle string `json:"original_title"`
+	OriginalName  string `json:"original_name"`
+	Overview      string
+	Videos        struct {
+		Results []struct {
+			Key, Site, Type string
+			Official        bool
+			Language        string `json:"iso_639_1"`
+		}
+	}
 	Release string `json:"release_date"`
 	AirDate string `json:"first_air_date"`
 	Total   int    `json:"number_of_episodes"`
@@ -141,9 +155,9 @@ func tmdbKind(kind string) string {
 }
 
 func (title tmdbTitle) internal(kind string) entry {
-	name, date := title.Title, title.Release
+	name, date, original := title.Title, title.Release, title.OriginalTitle
 	if kind == "series" {
-		name, date = title.Name, title.AirDate
+		name, date, original = title.Name, title.AirDate, title.OriginalName
 	}
 	if len(date) > 4 {
 		date = date[:4]
@@ -156,7 +170,7 @@ func (title tmdbTitle) internal(kind string) entry {
 	for _, genre := range title.Genres {
 		genres = append(genres, genre.Name)
 	}
-	return entry{ID: kind + ":tmdb:" + strconv.Itoa(title.ID), Kind: kind, Title: name, Subtitle: date, Cover: cover, Total: title.Total, Genres: prettyGenres(genres), Source: "TMDB"}
+	return entry{ID: kind + ":tmdb:" + strconv.Itoa(title.ID), Kind: kind, Title: name, Subtitle: date, Cover: cover, Total: title.Total, Genres: prettyGenres(genres), Source: "TMDB", Description: limitDescription(title.Overview), Aliases: mergeLabels(nil, []string{original})}
 }
 
 func searchTMDB(ctx context.Context, kind, query, token string) ([]entry, error) {
@@ -305,6 +319,8 @@ func (a *app) search(w http.ResponseWriter, r *http.Request) {
 	reply(w, 200, items)
 }
 
+var youtubeID = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
+
 func (a *app) details(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	parts := strings.Split(id, ":")
@@ -315,16 +331,65 @@ func (a *app) details(w http.ResponseWriter, r *http.Request) {
 	kind, source, key := parts[0], parts[1], parts[2]
 	ctx := r.Context()
 	var found entry
+	trailer := ""
+	withTrailer := r.URL.Query().Get("trailer") == "1"
 	err := errors.New("Kein Katalogeintrag")
 	switch {
 	case source == "imdb" && imdbID.MatchString(key) && (kind == "movie" || kind == "series"):
 		var payload struct{ Meta cinemeta }
 		err = getJSON(ctx, "https://v3-cinemeta.strem.io/meta/"+kind+"/"+key+".json", "", &payload)
 		found = payload.Meta.internal(kind)
+		if withTrailer {
+			for _, item := range payload.Meta.Trailers {
+				if strings.EqualFold(item.Type, "Trailer") && youtubeID.MatchString(item.Source) {
+					trailer = item.Source
+					break
+				}
+			}
+			if trailer == "" {
+				for _, item := range payload.Meta.TrailerStreams {
+					if youtubeID.MatchString(item.YtID) {
+						trailer = item.YtID
+						break
+					}
+				}
+			}
+			if trailer == "" {
+				for _, id := range payload.Meta.Trailer {
+					if youtubeID.MatchString(id) {
+						trailer = id
+						break
+					}
+				}
+			}
+		}
 	case source == "tmdb" && numericID.MatchString(key) && (kind == "movie" || kind == "series"):
 		var payload tmdbTitle
-		err = getJSON(ctx, "https://api.themoviedb.org/3/"+tmdbKind(kind)+"/"+key+"?language=de-DE", a.getSettings().TMDB, &payload)
+		params := url.Values{"language": {"de-DE"}}
+		if withTrailer {
+			params.Set("append_to_response", "videos")
+			params.Set("include_video_language", "de,en")
+		}
+		err = getJSON(ctx, "https://api.themoviedb.org/3/"+tmdbKind(kind)+"/"+key+"?"+params.Encode(), a.getSettings().TMDB, &payload)
 		found = payload.internal(kind)
+		if withTrailer {
+			score := -1
+			for _, clip := range payload.Videos.Results {
+				if clip.Site != "YouTube" || clip.Type != "Trailer" || !youtubeID.MatchString(clip.Key) {
+					continue
+				}
+				rank := 0
+				if clip.Language == "de" {
+					rank += 2
+				}
+				if clip.Official {
+					rank++
+				}
+				if rank > score {
+					score, trailer = rank, clip.Key
+				}
+			}
+		}
 	case kind == "book" && source == "ol" && editionID.MatchString(key):
 		var payload bookEdition
 		err = getJSON(ctx, "https://openlibrary.org/books/"+key+".json", "", &payload)
@@ -338,8 +403,7 @@ func (a *app) details(w http.ResponseWriter, r *http.Request) {
 			found.Cover = bookCover(payload.Covers[0])
 		}
 	case kind == "book" && source == "open" && openLibraryWork.MatchString(key):
-		found.Genres = openWorkGenres(ctx, key)
-		err = nil
+		found, err = openLibraryDetail(ctx, key)
 	case kind == "book" && source == "dnb" && numericID.MatchString(key):
 		isbn := r.URL.Query().Get("isbn")
 		if isbnPattern.MatchString(isbn) {
@@ -356,5 +420,8 @@ func (a *app) details(w http.ResponseWriter, r *http.Request) {
 		fail(w, 502, "Detaildaten sind gerade nicht verfügbar.")
 		return
 	}
-	reply(w, 200, found)
+	reply(w, 200, struct {
+		entry
+		Trailer string `json:"trailer,omitempty"`
+	}{found, trailer})
 }

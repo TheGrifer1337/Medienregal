@@ -33,10 +33,10 @@ func historyID(item historyTitle) string {
 }
 
 func uneditedHistoryTitle(item entry) bool {
-	return item.Status == historyStatus(item.Kind) &&
+	return !item.ImportEdited && item.Status == historyStatus(item.Kind) &&
 		item.ID == historyID(historyTitle{Title: item.Title, Kind: item.Kind}) &&
-		item.Subtitle == "" && item.Cover == "" && len(item.Genres) == 0 &&
-		item.Total == 0 && item.Progress == 0 && item.Ratings == [3]int{}
+		(item.CatalogID != "" || (item.Subtitle == "" && item.Cover == "" && len(item.Genres) == 0 && item.Total == 0)) &&
+		item.Progress == 0 && item.Notes == "" && len(item.Lists) == 0 && item.Ratings == [3]int{}
 }
 
 func planHistoryUndo(data library) (undoPreview, []entry) {
@@ -66,6 +66,7 @@ func planHistoryUndo(data library) (undoPreview, []entry) {
 			preview.Removed++
 		} else if change.PreviousStatus == "want" && item.Status == historyStatus(item.Kind) {
 			item.Status = change.PreviousStatus
+			item.CompletedYear = 0
 			entries = append(entries, item)
 			preview.Restored++
 		} else {

@@ -18,6 +18,14 @@ Unter **Einstellungen → Meine Streaminganbieter** kannst du die von dir genutz
 
 This product uses the TMDB API but is not endorsed or certified by TMDB. Streamingdaten stammen von Watchmode und JustWatch (über TMDB). Katalogdaten stammen auch von Cinemeta, der Deutschen Nationalbibliothek und Open Library.
 
+## Sammlung und Jahreslisten
+
+Titel können mehreren **eigenen Listen** angehören und persönliche Notizen speichern. Im Regal stehen Listenansicht, kleine und große Cover zur Wahl. **Duplikate** schlägt Paare über Titel, Originaltitel und Katalog-IDs vor. Die Funktion **Rückgängig** nimmt die letzte gespeicherte Änderung an einem Titel, eine Entfernung oder eine Zusammenführung zurück. Im Reiter **Statistik** findest du Abschlüsse, Genres und Bewertungen. Ältere Titel ohne erfasstes Abschlussjahr erscheinen unter „Alle Jahre“.
+
+**In meinem Abo enthalten** zeigt in der Merkliste nur bestätigte Abonnement-Angebote deiner Streaminganbieter. Beim Katalogabgleich für importierte Titel werden eindeutige Ergebnisse automatisch ergänzt. Mehrere Treffer kannst du auswählen.
+
+Die durchlaufende Jahresliste erscheint bei Filmen, Serien und Büchern. Sie zeigt bis zu 50 Treffer, geordnet nach der jeweiligen Katalogquelle. Die Liste für Filme und Serien nutzt TMDB bei eingerichtetem Zugang, sonst Cinemeta, Wikidata oder IMDbAPI. Bei Wikidata bestimmt die Anzahl verknüpfter Artikel die Reihenfolge. Bücher werden nach den Leselisten von Open Library gereiht. Verfügbare YouTube-Trailer starten in der Film- oder Serienvorschau. Beim Schließen wird der Player beendet. Ein Titel wird erst durch Antippen eines Status gespeichert.
+
 ## Windows-Installer und Veröffentlichungen
 
 Voraussetzungen für den lokalen Build unter Linux sind Go ab 1.23, Bash, cURL und NSIS.

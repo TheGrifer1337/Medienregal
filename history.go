@@ -219,12 +219,15 @@ func mergeHistory(existing []entry, titles []historyTitle) historyResult {
 			}
 			ids[id] = true
 			index[key] = []int{len(result.Entries)}
-			result.Entries = append(result.Entries, entry{ID: id, Kind: item.Kind, Title: item.Title, Status: status, Source: "Streamingverlauf"})
+			added := entry{ID: id, Kind: item.Kind, Title: item.Title, Status: status, Source: "Streamingverlauf"}
+			setCompletion(&added, nil)
+			result.Entries = append(result.Entries, added)
 			result.changes = append(result.changes, historyChange{ID: id})
 			result.Added++
 		} else if len(matches) == 1 && result.Entries[matches[0]].Status == "want" {
 			result.changes = append(result.changes, historyChange{ID: result.Entries[matches[0]].ID, PreviousStatus: "want"})
 			result.Entries[matches[0]].Status = status
+			setCompletion(&result.Entries[matches[0]], nil)
 			result.Updated++
 		} else {
 			result.Skipped++

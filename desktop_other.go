@@ -9,7 +9,7 @@ import (
 
 func lockInstance() (func(), error) { return func() {}, nil }
 func showError(message string)      { fmt.Println(message) }
-func runWindow(address, _ string, quit <-chan struct{}) error {
+func runWindow(address, _ string, quit <-chan struct{}, _ <-chan bool) error {
 	if err := openExternal(address); err != nil {
 		return err
 	}
