@@ -20,19 +20,21 @@ function annualChart() {
     ticker.kind=kind;
     ticker.genre='';
     const genres=[...(state.prefs?.chartGenres?.[kind]||[])].sort(collator.compare);
-    genreControl.replaceChildren(option('','Alle Genres'),...genres.map(genre=>option(genre,genre)));
+    genreControl.replaceChildren(option('',tr('Alle Genres')),...genres.map(genre=>option(genre,tr(genre))));
   }
   const year=new Date().getFullYear();
-  const key=JSON.stringify([kind,ticker.genre,year]);
+  const region=state.prefs?.region||'DE';
+  const market=regionName(region,state.language);
+  const key=JSON.stringify([kind,ticker.genre,year,region,state.language]);
   if (ticker.key===key) { syncTicker();return; }
   ticker.key=key;
   const generation=++ticker.generation;
   ticker.animation?.cancel();
   ticker.animation=null;
   const genre=ticker.genre;
-  const chartTitle=count=>'Top '+count+' · '+(genre?genre+' · ':'')+year;
+  const chartTitle=count=>tr('Top ')+count+' · '+market+' · '+(genre?tr(genre)+' · ':'')+year;
   $('chart-title').textContent=chartTitle(50);
-  $('chart-source').textContent='Lädt …';
+  $('chart-source').textContent=tr('Lädt …');
   const track=$('chart-track');
   track.replaceChildren();
   $('chart-frame').scrollLeft=0;
@@ -43,18 +45,19 @@ function annualChart() {
   }
   cached.request.then(data=>{
     if (state.kind!==kind || generation!==ticker.generation) return;
-    $('chart-title').textContent=data.items.length?chartTitle(data.items.length):'Jahrescharts · '+year;
-    if (!data.items.length) { $('chart-source').textContent='Keine Treffer für '+(genre||'dieses Jahr');return; }
-    $('chart-source').textContent=data.source;
+    $('chart-title').textContent=data.items.length?chartTitle(data.items.length):tr('Jahrescharts · ')+market+' · '+year;
+    if (!data.items.length) { $('chart-source').textContent=tr('Keine Treffer für ')+(genre?tr(genre):tr('dieses Jahr'));return; }
+    $('chart-source').textContent=[data.source,chartScope(data.scope)].filter(Boolean).join(' · ');
     const createStrip=clone=>{
       const strip=text('div',null,'chart-strip');
       if (clone) strip.setAttribute('aria-hidden','true');
       for (const [i,item] of data.items.entries()) {
         const control=button('',()=>openRankedTitle(item),'chart-item');
-        control.setAttribute('aria-label','Platz '+(i+1)+': '+item.title);
+        control.setAttribute('aria-label',tr('Platz ')+(i+1)+': '+item.title);
         if (clone) control.tabIndex=-1;
         const content=text('span',null,'chart-caption');
         content.append(text('span','№ '+(i+1),'chart-rank'),text('strong',item.title));
+        if (item.kind==='movie') content.append(movieBadge(item));
         control.append(cover(item),content);strip.append(control);
       }
       return strip;
@@ -70,10 +73,10 @@ function annualChart() {
   }).catch(()=>{
     if(charts.get(key)===cached) charts.delete(key);
     if (state.kind!==kind || generation!==ticker.generation) return;
-    $('chart-source').textContent='Jahresliste gerade nicht verfügbar';
-    const retry=button('Erneut laden',()=>{ticker.key='';annualChart();},'quiet');
+    $('chart-source').textContent=tr('Jahresliste gerade nicht verfügbar');
+    const retry=button(tr('Erneut laden'),()=>{ticker.key='';annualChart();},'quiet');
     track.append(retry);
-    if ((kind==='movie'||kind==='series')&&!state.prefs?.hasTmdb) track.append(text('span','TMDB ist eine weitere Quelle in den Einstellungen.','form-note'));
+    if ((kind==='movie'||kind==='series')&&!state.prefs?.hasTmdb) track.append(text('span',tr('TMDB ist eine weitere Quelle in den Einstellungen.'),'form-note'));
   });
 }
 
@@ -85,7 +88,7 @@ function initChart() {
     if (charts.get(ticker.key)?.expires<=Date.now()) { ticker.key='';annualChart(); }
   },60000);
   const syncPauseButton=()=>{
-    pause.textContent=ticker.paused?'Abspielen':'Pausieren';
+    pause.textContent=ticker.paused?tr('Abspielen'):tr('Pausieren');
     pause.setAttribute('aria-pressed',String(ticker.paused));
   };
   syncPauseButton();
@@ -121,18 +124,18 @@ function initChart() {
 function trailerPlayer(id,title) {
   const container=text('div',null,'trailer-stage');
   const video=document.createElement('iframe');
-  video.title='Trailer für '+title;
+  video.title=tr('Trailer für ')+title;
   video.referrerPolicy='origin';
   video.allow='autoplay; encrypted-media; fullscreen; picture-in-picture';
   video.allowFullscreen=true;
   video.src='https://www.youtube-nocookie.com/embed/'+id+'?autoplay=1&mute=0&playsinline=1&fs=1';
   const actions=text('div',null,'trailer-actions');
-  actions.append(button('Vollbild',async()=>{
+  actions.append(button(tr('Vollbild'),async()=>{
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
       else await container.requestFullscreen();
     } catch { /* The player also exposes its own fullscreen control. */ }
-  },'quiet'),link('https://www.youtube.com/watch?v='+id,'Auf YouTube öffnen'));
+  },'quiet'),link('https://www.youtube.com/watch?v='+id,tr('Auf YouTube öffnen')));
   container.append(video,actions);
   return container;
 }
@@ -142,9 +145,10 @@ async function openRankedTitle(initial) {
   const existing=state.entries.find(item=>catalogID(item)===initial.id);
   const titleCard=text('div',null,'ranking-detail');
   const info=text('div');
-  const description=text('p',initial.description||'Kurzbeschreibung wird geladen …','ranking-description');
-  const genres=text('p',genreLabels(initial.kind,initial.genres||[]).join(' · '),'form-note');
+  const description=text('p',initial.description||tr('Kurzbeschreibung wird geladen …'),'ranking-description');
+  const genres=text('p',genreLabels(initial.kind,initial.genres||[]).map(name=>tr(name)).join(' · '),'form-note');
   info.append(text('p',initial.subtitle,'muted'),genres,description);
+  if (initial.kind==='movie') info.append(movieBadge(initial,true));
   const coverCredit=text('p',null,'form-note');
   info.append(coverCredit);
   const art=text('div');
@@ -153,18 +157,18 @@ async function openRankedTitle(initial) {
   inner.append(titleCard);
   const player=text('div',null,'ranking-player');
   const film=isScreen(initial);
-  if (film) player.append(text('p','Trailer wird gesucht …','form-note'));
+  if (film) player.append(text('p',tr('Trailer wird gesucht …'),'form-note'));
   inner.append(player);
   const actions=text('div',null,'dialog-actions ranking-actions');
   const error=text('p',null,'error form-error');
   error.setAttribute('role','alert');
   let item=initial;
   const states=film?[
-    ['seen','Schon gesehen'],['want','Möchte ich sehen'],['started','Gerade dabei']
+    ['seen',tr('Schon gesehen')],['want',tr('Möchte ich sehen')],['started',tr('Gerade dabei')]
   ]:initial.kind==='game'?[
-    ['finished','Schon durchgespielt'],['want','Möchte ich spielen'],['started','Spiele ich gerade']
+    ['finished',tr('Schon durchgespielt')],['want',tr('Möchte ich spielen')],['started',tr('Spiele ich gerade')]
   ]:[
-    ['finished','Schon gelesen'],['want','Möchte ich lesen'],['started','Lese ich gerade']
+    ['finished',tr('Schon gelesen')],['want',tr('Möchte ich lesen')],['started',tr('Lese ich gerade')]
   ];
   for (const [status,label] of states) {
     const action=button(label,async()=>{
@@ -183,6 +187,8 @@ async function openRankedTitle(initial) {
     if (existing?.status===status) action.setAttribute('aria-pressed','true');
     actions.append(action);
   }
+  const playback=playbackAction(initial);
+  if (playback) inner.append(playback);
   inner.append(error,actions);
   try {
     const found=await api(route('details',{id:initial.id,trailer:film?'1':'0',genres:'1'}));
@@ -192,16 +198,16 @@ async function openRankedTitle(initial) {
     if (!existing?.cover && item.cover!==initial.cover) {
       art.replaceChildren(cover({...item,customCover:existing?.customCover},coverCredit));
     }
-    description.textContent=item.description||'Keine Kurzbeschreibung verfügbar.';
-    genres.textContent=genreLabels(item.kind,item.genres||[]).join(' · ');
+    description.textContent=item.description||tr('Keine Kurzbeschreibung verfügbar.');
+    genres.textContent=genreLabels(item.kind,item.genres||[]).map(name=>tr(name)).join(' · ');
     player.replaceChildren();
     if (film) {
       if (/^[A-Za-z0-9_-]{11}$/.test(found.trailer||'')) player.append(trailerPlayer(found.trailer,item.title));
-      else player.append(text('p','Kein abspielbarer Trailer im Katalog gefunden.','form-note'));
+      else player.append(text('p',tr('Kein abspielbarer Trailer im Katalog gefunden.'),'form-note'));
     }
   } catch {
     if (!inner.isConnected) return;
-    description.textContent=item.description||'Keine Kurzbeschreibung verfügbar.';
-    if (film) player.replaceChildren(text('p','Trailer gerade nicht verfügbar.','form-note'));
+    description.textContent=item.description||tr('Keine Kurzbeschreibung verfügbar.');
+    if (film) player.replaceChildren(text('p',tr('Trailer gerade nicht verfügbar.'),'form-note'));
   }
 }

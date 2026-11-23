@@ -47,7 +47,7 @@ function providerPicker() {
   const previous=state.prefs.providers||[];
   const active=new Set(previous.map(name=>providerKey(name)));
   const fieldset=text('fieldset',null,'provider-picker');
-  fieldset.append(text('legend','Meine Streaminganbieter'));
+  fieldset.append(text('legend','My streaming providers'));
   const grid=text('div',null,'provider-checks');
   const choices=distinctProviders([...providerPresets,...previous]).sort(collator.compare).map(name=>{
     const checkbox=input('checkbox','provider',name);
@@ -55,11 +55,11 @@ function providerPicker() {
     grid.append(field(name,checkbox));
     return checkbox;
   });
-  const extra=input('text','custom-provider','','Weitere Anbieter, durch Komma getrennt');
+  const extra=input('text','custom-provider','','Other providers, separated by commas');
   extra.maxLength=500;
   const streamingConfigured=state.prefs.hasWatchmode||state.prefs.hasTmdb;
-  fieldset.append(grid,field('Eigene Anbieter',extra),
-    text('p','Ohne Auswahl werden alle Angebote angezeigt.'+(streamingConfigured?'':' Für Live-Angebote richte unten Watchmode oder TMDB ein.'),'form-note'));
+  fieldset.append(grid,field('Other providers',extra),
+    text('p','All offers are shown when no providers are selected.'+(streamingConfigured?'':' Set up Watchmode or TMDB below to see live offers.'),'form-note'));
   return {
     fieldset,
     selected:()=>distinctProviders([...choices.filter(choice=>choice.checked).map(choice=>choice.value),...extra.value.split(',')])
@@ -77,7 +77,7 @@ function providerFilter() {
   const configured=Boolean(state.prefs.hasWatchmode||state.prefs.hasTmdb);
   check.disabled=!configured;
   check.checked=configured && state.onlyProviders;
-  filter.title=configured?'':'Für diesen Filter zuerst Watchmode oder TMDB in den Einstellungen einrichten.';
+  filter.title=configured?'':tr('Für diesen Filter zuerst Watchmode oder TMDB in den Einstellungen einrichten.');
   const abo=$('only-subscriptions');
   abo.disabled=!configured;
   abo.checked=configured&&state.onlySubscriptions;
@@ -94,12 +94,12 @@ function filterWatchCards(items, cards) {
   let unknown=0;
   const paint=()=>{
     if (pending) {
-      result.textContent='Prüfe deine Anbieter · '+(items.length-pending)+' von '+items.length+' Titeln';
+      result.textContent=tr('Prüfe deine Anbieter · ')+(items.length-pending)+tr(' von ')+items.length+tr(' Titeln');
     } else if (matching || unknown) {
-      const summary=matching?matching+' bei deinen Anbietern':'Keine passenden Angebote gemeldet';
-      result.textContent=summary+(unknown?' · '+unknown+' ohne prüfbare Verfügbarkeitsdaten':'');
+      const summary=matching?matching+tr(' bei deinen Anbietern'):tr('Keine passenden Angebote gemeldet');
+      result.textContent=summary+(unknown?' · '+unknown+tr(' ohne prüfbare Verfügbarkeitsdaten'):'');
     } else {
-      result.textContent='Für keinen dieser Titel wurde ein Angebot bei deinen Anbietern gemeldet.';
+      result.textContent=tr('Für keinen dieser Titel wurde ein Angebot bei deinen Anbietern gemeldet.');
     }
   };
   cards.forEach((card,index)=>{

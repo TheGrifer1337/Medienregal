@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -76,4 +79,34 @@ func registeredXboxPackages(parent context.Context) []string {
 		return nil
 	}
 	return paths
+}
+
+var xboxAppID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,200}![A-Za-z0-9._-]{1,100}$`)
+
+func openInstalledGame(ctx context.Context, item entry) error {
+	switch item.Source {
+	case "Steam":
+		id := strings.TrimPrefix(item.ID, "game:steam:")
+		if numericID.MatchString(id) {
+			return openExternal("steam://rungameid/" + id)
+		}
+	case "Epic Games":
+		if strings.HasPrefix(item.launchData, "com.epicgames.launcher://apps/") {
+			return openExternal(item.launchData)
+		}
+	case "Xbox":
+		root := os.Getenv("SystemRoot")
+		if !filepath.IsAbs(root) {
+			break
+		}
+		const query = `$ErrorActionPreference = 'Stop'; $apps = @(Get-StartApps | Where-Object { ($env:MEDIATHEK_GAME_ID -and $_.AppID.StartsWith($env:MEDIATHEK_GAME_ID + '_', [StringComparison]::OrdinalIgnoreCase)) -or ($_.Name -eq $env:MEDIATHEK_GAME_TITLE) }); if ($apps.Count -eq 1) { $apps[0].AppID }`
+		command := exec.CommandContext(ctx, filepath.Join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-NonInteractive", "-Command", query)
+		command.Env = append(os.Environ(), "MEDIATHEK_GAME_ID="+item.launchData, "MEDIATHEK_GAME_TITLE="+item.Title)
+		command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+		output, err := command.Output()
+		if appID := strings.TrimSpace(string(output)); err == nil && xboxAppID.MatchString(appID) {
+			return openExternal(`shell:AppsFolder\` + appID)
+		}
+	}
+	return errors.New("no installed launcher target")
 }

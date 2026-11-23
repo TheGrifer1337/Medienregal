@@ -7,13 +7,13 @@ const definitions = {
   game:{ title:'Spiele',singular:'Spiel',icon:'🎮',states:{library:'In Bibliothek',want:'Möchte ich spielen',started:'Spiele ich gerade',finished:'Durchgespielt'} }
 };
 const ratings = { game:['Qualität','Gameplay','Storyline'], screen:['Qualität','Storyline','Allgemein'], book:['Storyline','Charakterentwicklung','Schreibstil'] };
-const state = { kind:'movie', entries:[], status:'', genre:'', onlyFavorites:false, sort:'title', onlyProviders:false, onlySubscriptions:false, lists:[], list:'', view:'large', undo:'', statsYear:'', prefs:null, streamCache:new Map(), streamJobs:[], activeJobs:0 };
+const state = { kind:'movie', language:'de', goals:{}, entries:[], status:'', genre:'', onlyFavorites:false, sort:'title', onlyProviders:false, onlySubscriptions:false, lists:[], list:'', view:'large', undo:'', statsYear:'', prefs:null, streamCache:new Map(), streamJobs:[], activeJobs:0 };
 const $ = id => document.getElementById(id);
 const modal = $('modal');
 const modalBody = $('modal-body');
 const shelf = $('shelf');
-const number = new Intl.NumberFormat('de-DE',{maximumFractionDigits:2});
-const collator = new Intl.Collator('de',{numeric:true,sensitivity:'base'});
+let number = new Intl.NumberFormat('de-DE',{maximumFractionDigits:2});
+let collator = new Intl.Collator('de',{numeric:true,sensitivity:'base'});
 const screenGenres = [
   'Abenteuer','Action','Animation','Anime','Biografie','Dokumentation','Drama','Familie',
   'Fantasy','Historisch','Horror','Komödie','Krieg','Krimi','Musik','Mystery',
@@ -111,14 +111,34 @@ async function api(endpoint, method='GET', data) {
   const response = await fetch('api/'+endpoint, {method, headers:data ? {'Content-Type':'application/json'} : {},body:data ? JSON.stringify(data) : undefined});
   if (response.status===204) return;
   const result=await response.json();
-  if (!response.ok) throw new Error(result.error || 'Die Anfrage konnte nicht abgeschlossen werden.');
+  if (!response.ok) {
+    const message=result.error||tr('Die Anfrage konnte nicht abgeschlossen werden.');
+    const error=new Error(tr(message));
+    error.englishMessage=tr(message,'en');
+    throw error;
+  }
   return result;
 }
 const route = (endpoint, values) => endpoint+'?'+new URLSearchParams(values);
 const average = item => item.ratings?.every(Boolean) ? item.ratings.reduce((sum,value)=>sum+value,0)/6 : null;
 const isScreen = item => item.kind==='movie'||item.kind==='series';
 const streamQuery = item => /^((movie|series):(?:imdb:tt|tmdb:)[0-9]+)$/.test(catalogID(item));
-const current = () => definitions[state.kind];
+function localizedDefinition(kind) {
+  const info=definitions[kind];
+  return {...info,title:tr(info.title),singular:tr(info.singular),unit:tr(info.unit),
+    states:Object.fromEntries(Object.entries(info.states).map(([key,label])=>[key,tr(label)]))};
+}
+const current = () => localizedDefinition(state.kind);
+
+function applyLanguage() {
+  state.language=state.prefs?.language||'de';
+  document.documentElement.lang=state.language;
+  number=new Intl.NumberFormat(state.language,{maximumFractionDigits:2});
+  collator=new Intl.Collator(state.language,{numeric:true,sensitivity:'base'});
+  localizeStatic();
+  $('chart-pause').textContent=ticker.paused?tr('Abspielen'):tr('Pausieren');
+  tabs();
+}
 
 function switchCategory(kind) {
   if (kind===state.kind) return;
@@ -141,11 +161,11 @@ function switchCategory(kind) {
 
 function tabs() {
   $('tabs').setAttribute('role','tablist');
-  $('tabs').replaceChildren(...Object.entries({...definitions,stats:{title:'Statistik',icon:'▥'}}).map(([kind, info])=>{
+  $('tabs').replaceChildren(...Object.entries({...definitions,stats:{title:tr('Statistik'),icon:'▥'}}).map(([kind, info])=>{
     const tab=button('',()=>switchCategory(kind));
     const icon=text('span',info.icon,'tab-icon');
     icon.setAttribute('aria-hidden','true');
-    tab.append(icon,info.title);
+    tab.append(icon,tr(info.title));
     tab.dataset.kind=kind;
     tab.setAttribute('role','tab');
     tab.setAttribute('aria-controls',kind==='stats'?'statistics':'collection-panel');
@@ -166,15 +186,15 @@ function render() {
   const items=state.entries.filter(item=>item.kind===state.kind);
   $('heading').textContent=info.title;
   $('launcher-import').hidden=state.kind!=='game';
-  $('count').textContent=items.length+' '+(items.length===1?'gespeicherter Titel':'gespeicherte Titel');
-  $('status-filters').replaceChildren(...[['','Alle'],...Object.entries(info.states)].map(([value,label])=>{
+  $('count').textContent=items.length+' '+(items.length===1?tr('gespeicherter Titel'):tr('gespeicherte Titel'));
+  $('status-filters').replaceChildren(...[['',tr('Alle')],...Object.entries(info.states)].map(([value,label])=>{
     const node=button(label,()=>{ state.status=value; render(); });
     node.setAttribute('aria-pressed',state.status===value);
     return node;
   }));
   const genres=availableGenres(state.kind);
   if (!genres.some(label=>genreKey(label)===state.genre)) state.genre='';
-  $('genre').replaceChildren(option('','Alle Genres'),...genres.map(genre=>option(genreKey(genre),genre)));
+  $('genre').replaceChildren(option('',tr('Alle Genres')),...genres.map(genre=>option(genreKey(genre),tr(genre))));
   $('genre').value=state.genre;
   const visible=items.filter(item=>(!state.onlyFavorites||item.favorite)&&(!state.list||item.lists?.includes(state.list))&&(!state.status||item.status===state.status)&&(!state.genre||genreLabels(item.kind,item.genres||[]).some(genre=>genreKey(genre)===state.genre)));
   visible.sort(compare);
@@ -189,8 +209,8 @@ function render() {
   const body=text('div');
   const symbol=text('span',info.icon,'empty-symbol');
   symbol.setAttribute('aria-hidden','true');
-  body.append(symbol,text('h2',items.length?'Keine passenden Titel':'Dein Regal ist noch leer'),text('p',items.length?'Wähle eine andere Liste, einen anderen Status oder ein anderes Genre.':'Finde einen Titel über die Suche oder trage ihn manuell ein.'));
-  if (!items.length) body.append(button('＋ Titel hinzufügen',openSearch,'accent'));
+  body.append(symbol,text('h2',items.length?tr('Keine passenden Titel'):tr('Dein Regal ist noch leer')),text('p',items.length?tr('Wähle eine andere Liste, einen anderen Status oder ein anderes Genre.'):tr('Finde einen Titel über die Suche oder trage ihn manuell ein.')));
+  if (!items.length) body.append(button(tr('＋ Titel hinzufügen'),openSearch,'accent'));
   empty.append(body); shelf.append(empty);
 }
 
@@ -202,7 +222,7 @@ function compare(a,b) {
     if (x!==null && y!==null && x!==y) return state.sort==='best' ? y-x : x-y;
   }
   if (state.sort==='genre') {
-    const order=collator.compare(genreLabels(a.kind,a.genres||[])[0] || '\uffff',genreLabels(b.kind,b.genres||[])[0] || '\uffff');
+    const order=collator.compare(tr(genreLabels(a.kind,a.genres||[])[0]) || '\uffff',tr(genreLabels(b.kind,b.genres||[])[0]) || '\uffff');
     if (order) return order;
   }
   return collator.compare(a.title,b.title);
@@ -218,15 +238,19 @@ function card(item) {
   body.append(text('strong',item.title));
   if (item.subtitle) body.append(text('small',item.subtitle));
   const avg=average(item);
-  body.append(text('small',avg===null?'Ohne Bewertung':'★ '+number.format(avg)+' / 5',avg===null?'':'score'));
+  if (item.kind==='movie') body.append(movieBadge(item));
+  body.append(text('small',avg===null?tr('Ohne Bewertung'):'★ '+number.format(avg)+' / 5',avg===null?'':'score'));
   open.append(cover(item),body);
   const foot=text('div',null,'card-foot');
   foot.append(text('span',current().states[item.status],'chip'));
   if (item.kind==='game'&&item.source) foot.append(text('small',' · '+item.source,'muted'));
   if (item.status==='started' && current().unit) foot.append(text('small',' · '+item.progress+(item.total?' / '+item.total:'')+' '+current().unit,'muted'));
-  if (item.kind==='book' && item.genres?.length) foot.append(text('small',genreLabels(item.kind,item.genres)[0],'book-genre'));
+  if (item.kind==='book' && item.genres?.length) foot.append(text('small',tr(genreLabels(item.kind,item.genres)[0]),'book-genre'));
   if (item.lists?.length) foot.append(text('small',item.lists.join(' · '),'book-genre'));
   if (isScreen(item) && item.status==='want') foot.append(streamPanel(item));
+  if (item.loan) foot.append(text('small',tr('Verliehen an ')+item.loan.to,'chip'));
+  const playback=playbackAction(item);
+  if (playback) foot.append(playback);
   article.append(open,favoriteButton(item),foot);
   return article;
 }
@@ -256,44 +280,44 @@ function streamPanel(item) {
   const box=text('div',null,'stream');
   const justwatch='https://www.justwatch.com/'+(state.prefs?.region||'DE').toLowerCase()+'/Suche?q='+encodeURIComponent(item.title);
   if (!streamQuery(item) || !(state.prefs?.hasWatchmode || state.prefs?.hasTmdb)) {
-    box.append(link(justwatch,'Angebote und Preise bei JustWatch'));
-    if (streamQuery(item)) box.append(text('small','Live-Angebote in den Einstellungen aktivieren.'));
+    box.append(link(justwatch,tr('Angebote und Preise bei JustWatch')));
+    if (streamQuery(item)) box.append(text('small',tr('Live-Angebote in den Einstellungen aktivieren.')));
     return box;
   }
-  box.append(text('small','Streamingangebote werden geladen …'));
+  box.append(text('small',tr('Streamingangebote werden geladen …')));
   loadStream(catalogID(item)).then(data=>{
     if (!box.isConnected) return;
     const offers=selectedProviderOffers(data.offers);
     const personal=state.prefs?.providers?.length>0;
     box.replaceChildren(text('strong','Streaming · '+data.region));
-    if (!offers.length) box.append(text('small',personal?'Keine Angebote bei deinen Anbietern gemeldet.':'Keine gemeldeten Angebote.'));
+    if (!offers.length) box.append(text('small',personal?tr('Keine Angebote bei deinen Anbietern gemeldet.'):tr('Keine gemeldeten Angebote.')));
     const list=text('ul');
     offers.slice(0,4).forEach(offer=>list.append(offerLine(offer)));
     box.append(list);
     if (offers.length>4) {
       const extra=text('details');
-      extra.append(text('summary','Weitere '+(offers.length-4)+' Angebote'));
+      extra.append(text('summary',tr('Weitere ')+(offers.length-4)+tr(' Angebote')));
       const remaining=text('ul');
       offers.slice(4).forEach(offer=>remaining.append(offerLine(offer)));
       extra.append(remaining); box.append(extra);
     }
-    if (data.tmdb) box.append(text('small','Anbieterangaben von JustWatch über TMDB.'));
-    if (data.watchmode) box.append(text('small','Streamingdaten von Watchmode. Preis ggf. je Staffel oder Folge.'));
-    if (data.partial) box.append(text('small','Eine Datenquelle ist gerade nicht verfügbar.'));
-    box.append(link(httpsURL(data.link)||justwatch,personal?'Auch andere Anbieter auf JustWatch prüfen':'Alle Angebote und Preise ansehen'));
+    if (data.tmdb) box.append(text('small',tr('Anbieterangaben von JustWatch über TMDB.')));
+    if (data.watchmode) box.append(text('small',tr('Streamingdaten von Watchmode. Preis ggf. je Staffel oder Folge.')));
+    if (data.partial) box.append(text('small',tr('Eine Datenquelle ist gerade nicht verfügbar.')));
+    box.append(link(httpsURL(data.link)||justwatch,personal?tr('Auch andere Anbieter auf JustWatch prüfen'):tr('Alle Angebote und Preise ansehen')));
   }).catch(error=>{
-    box.replaceChildren(text('small',error.message),link(justwatch,'Angebote und Preise bei JustWatch'));
+    box.replaceChildren(text('small',error.message),link(justwatch,tr('Angebote und Preise bei JustWatch')));
   });
   return box;
 }
 
 function offerLine(offer) {
-  const labels={sub:'Im Abo enthalten',free:'Kostenlos',ads:'Kostenlos mit Werbung',rent:'Leihen',buy:'Kaufen',tve:'TV-Anbieter-Zugang'};
+  const labels={sub:tr('Im Abo enthalten'),free:tr('Kostenlos'),ads:tr('Kostenlos mit Werbung'),rent:tr('Leihen'),buy:tr('Kaufen'),tve:tr('TV-Anbieter-Zugang')};
   const line=text('li');
   line.append(httpsURL(offer.url)?link(offer.url,offer.name):text('span',offer.name));
   const priced=offer.type==='rent'||offer.type==='buy';
-  const amount=offer.price && offer.currency ? new Intl.NumberFormat('de-DE',{style:'currency',currency:offer.currency}).format(offer.price) : '';
-  line.append(' · '+labels[offer.type]+(priced ? ' · '+(amount?'ab '+amount:'Preis beim Anbieter') : ''));
+  const amount=offer.price && offer.currency ? new Intl.NumberFormat(state.language,{style:'currency',currency:offer.currency}).format(offer.price) : '';
+  line.append(' · '+labels[offer.type]+(priced ? ' · '+(amount?tr('ab ')+amount:tr('Preis beim Anbieter')) : ''));
   return line;
 }
 
@@ -301,7 +325,7 @@ function show(title) {
   const inner=text('section',null,'dialog-inner');
   const header=text('div',null,'dialog-title');
   const close=button('✕',()=>modal.close(),'quiet close');
-  close.setAttribute('aria-label','Schließen');
+  close.setAttribute('aria-label',tr('Schließen'));
   header.append(text('h2',title),close); inner.append(header);
   modalBody.replaceChildren(inner);
   if (!modal.open) modal.showModal();
@@ -312,31 +336,33 @@ function show(title) {
 
 function openSearch() {
   const kind=state.kind, info=current();
-  const inner=show(info.singular+' hinzufügen');
+  const inner=show(info.singular+tr(' hinzufügen'));
   const form=text('form',null,'form-line');
-  const query=input('search','q','','Titel'+(kind==='book'?' oder ISBN':''));
+  const query=input('search','q','',tr('Titel')+(kind==='book'?tr(' oder ISBN'):''));
   form.append(query);
-  if (kind==='book') form.append(input('text','author','','Autor'),input('text','publisher','','Verlag'),input('text','volume','','Reihe und Bandnummer'));
-  const submit=text('button','Suchen','accent');
+  if (kind==='book') form.append(input('text','author','',tr('Autor')),input('text','publisher','',tr('Verlag')),input('text','volume','',tr('Reihe und Bandnummer')));
+  const submit=text('button',tr('Suchen'),'accent');
   submit.type='submit'; form.append(submit);
   const results=text('div',null,'results');
   results.setAttribute('aria-live','polite');
-  inner.append(form,results,button('Manuell hinzufügen',()=>openEditor({id:'manual:'+crypto.randomUUID(),kind,title:query.value.trim(),ratings:[0,0,0]}),'quiet'));
-  if (kind==='movie'||kind==='series') inner.append(button('Streamingverlauf importieren',openHistory,'quiet search-import'));
-  if (kind==='game') inner.append(button('Installierte Spiele importieren',openLauncherImport,'quiet search-import'));
+  inner.append(form,results,button(tr('Manuell hinzufügen'),()=>openEditor({id:'manual:'+crypto.randomUUID(),kind,title:query.value.trim(),ratings:[0,0,0]}),'quiet'));
+  inner.append(barcodeControls(inner,form,query,kind));
+  if (kind==='movie'||kind==='series') inner.append(button(tr('Streamingverlauf importieren'),openHistory,'quiet search-import'));
+  if (kind==='game') inner.append(button(tr('Installierte Spiele importieren'),openLauncherImport,'quiet search-import'));
   query.focus();
   form.addEventListener('submit',async event=>{
     event.preventDefault(); submit.disabled=true;
-    results.replaceChildren(text('p','Suche läuft …','muted'));
+    results.replaceChildren(text('p',tr('Suche läuft …'),'muted'));
     const values=Object.fromEntries(new FormData(form)); values.kind=kind;
     try {
       const found=await api(route('search',values));
       results.replaceChildren();
-      if (!found.length) results.append(text('p','Keine Treffer. Prüfe die Schreibweise oder füge den Titel manuell hinzu.','muted'));
+      if (!found.length) results.append(text('p',tr('Keine Treffer. Prüfe die Schreibweise oder füge den Titel manuell hinzu.'),'muted'));
       for (const item of found) {
         const title=text('span');
-        title.append(text('strong',item.title),text('small',[item.subtitle,item.kind==='book'?item.genres?.[0]:null,item.source].filter(Boolean).join(' · ')));
+        title.append(text('strong',item.title),text('small',[item.subtitle,item.kind==='book'?tr(item.genres?.[0]):null,tr(item.source)].filter(Boolean).join(' · ')));
         const match=button('',()=>selectResult(item),'result');
+        if (item.kind==='movie') title.append(movieBadge(item));
         match.append(cover(item),title); results.append(match);
       }
     } catch(error) { results.replaceChildren(text('p',error.message,'error')); }
@@ -349,7 +375,7 @@ async function selectResult(item) {
   if (existing && (existing.kind!=='book' || existing.genres?.length)) { openEditor(existing); return; }
   item=existing || item;
   const loading=show(item.title);
-  const status=text('p','Lade Details …','muted');
+  const status=text('p',tr('Lade Details …'),'muted');
   loading.append(status);
   const currentGenres=genreLabels(item.kind,item.genres||[]);
   const isBook=item.kind==='book';
@@ -367,7 +393,7 @@ async function selectResult(item) {
       const genres=isBook && needsGenre && incoming.length ?
         genreLabels(item.kind,[...incoming.filter(genre=>!broadBookGenres.has(genre)),...currentGenres,...incoming]) :
         (incoming.length?incoming:currentGenres);
-      item={...item,genres,total:details.total||item.total,cover:details.cover||item.cover,description:details.description||item.description,aliases:details.aliases||item.aliases};
+      item={...item,genres,total:details.total||item.total,cover:details.cover||item.cover,imdb:details.imdb||item.imdb,description:details.description||item.description,aliases:details.aliases||item.aliases};
     } catch { /* The search result can still be saved. */ }
   }
   if (modal.open && loading.isConnected) openEditor(item);
@@ -384,7 +410,7 @@ function stars(item, index, label) {
     const rating=item.ratings[index];
     starsList.forEach((fill,i)=>{ fill.className=rating>=i*2+2?'full':'half';fill.hidden=rating<=i*2; });
     controls.forEach((control,i)=>control.setAttribute('aria-pressed',rating===i+1));
-    counter.value=rating?number.format(rating/2)+' / 5':'Offen';
+    counter.value=rating?number.format(rating/2)+' / 5':tr('Offen');
   };
   for (let i=0;i<5;i++) {
     const star=text('span','★','star');
@@ -393,13 +419,13 @@ function stars(item, index, label) {
     star.append(fill);
     for (const value of [i*2+1,i*2+2]) {
       const control=button('',()=>{ item.ratings[index]=value; paint(); });
-      control.setAttribute('aria-label',label+' '+number.format(value/2)+' Sterne');
-      control.title=number.format(value/2)+' Sterne';
+      control.setAttribute('aria-label',label+' '+number.format(value/2)+tr(' Sterne'));
+      control.title=number.format(value/2)+tr(' Sterne');
       controls.push(control); star.append(control);
     }
     row.append(star);
   }
-  row.append(counter,button('Zurücksetzen',()=>{item.ratings[index]=0;paint();},'clear-stars'));
+  row.append(counter,button(tr('Zurücksetzen'),()=>{item.ratings[index]=0;paint();},'clear-stars'));
   wrap.append(row);paint();return wrap;
 }
 
@@ -410,11 +436,11 @@ function genrePicker(item) {
   const summary=text('summary');
   const list=text('div',null,'genre-checks');
   const names=availableGenres(item.kind,initial);
-  const extra=input('text','genre','','z. B. Steampunk, Urban Fantasy');
+  const extra=input('text','genre','',tr('z. B. Steampunk, Urban Fantasy'));
   const choices=names.map(name=>{
     const check=input('checkbox','genre-choice',name);
     check.checked=initial.some(genre=>genreKey(genre)===genreKey(name));
-    const label=field(name,check);
+    const label=field(tr(name),check);
     list.append(label);
     return check;
   });
@@ -432,20 +458,20 @@ function genrePicker(item) {
   let preferred=initial[0]||'';
   const update=()=>{
     const genres=selected();
-    summary.textContent=genres.length?'Genres · '+genres.join(', '):'Genres auswählen';
+    summary.textContent=genres.length?tr('Genres · ')+genres.map(name=>tr(name)).join(', '):tr('Genres auswählen');
     if (isBook) {
-      primary.replaceChildren(option('','Genre auswählen'),...genres.map(name=>option(name,name)));
+      primary.replaceChildren(option('',tr('Genre auswählen')),...genres.map(name=>option(name,tr(name))));
       primary.value=genres.includes(preferred)?preferred:(genres[0]||'');
     }
   };
   primary.addEventListener('change',()=>{ preferred=primary.value; });
   list.addEventListener('change',update);
   extra.addEventListener('input',update);
-  panel.append(summary,list,field('Eigene Genres (durch Komma getrennt)',extra));
+  panel.append(summary,list,field(tr('Eigene Genres (durch Komma getrennt)'),extra));
   update();
   return {
     panel,
-    primary:isBook?field('Hauptgenre',primary):null,
+    primary:isBook?field(tr('Hauptgenre'),primary):null,
     genres:()=> {
       const values=selected();
       return primary.value ? [primary.value,...values.filter(name=>name!==primary.value)] : values;
@@ -455,9 +481,9 @@ function genrePicker(item) {
 }
 
 function openEditor(original) {
-  const info=definitions[original.kind], item={...original,ratings:[...(original.ratings||[0,0,0])]};
+  const info=localizedDefinition(original.kind), item={...original,ratings:[...(original.ratings||[0,0,0])]};
   const existing=state.entries.some(saved=>saved.id===item.id);
-  const inner=show(item.title||info.singular+' hinzufügen');
+  const inner=show(item.title||info.singular+tr(' hinzufügen'));
   const form=text('form');
   const detail=text('div',null,'detail');
   const art=text('div',null,'editor-art');
@@ -480,20 +506,26 @@ function openEditor(original) {
   const status=document.createElement('select'); status.name='status';
   for(const [value,label] of Object.entries(info.states)) status.append(option(value,label));
   status.value=item.status || 'want';
-  fields.append(field('Titel',title),field(item.kind==='book'?'Autor / Ausgabe':'Jahr / Zusatz',subtitle),genre.panel);
+  fields.append(field(tr('Titel'),title),field(item.kind==='book'?tr('Autor / Ausgabe'):tr('Jahr / Zusatz'),subtitle),genre.panel);
   if (genre.primary) fields.append(genre.primary);
   const favorite=input('checkbox','favorite');
   favorite.checked=Boolean(item.favorite);
-  const favoriteField=field('Als Favorit markieren',favorite);
+  const favoriteField=field(tr('Als Favorit markieren'),favorite);
   favoriteField.className='favorite-field';
-  fields.append(field('Status',status),favoriteField,coverChoice.section,lists.panel,field('Persönliche Notizen',notes));
-  if (item.id.startsWith('manual:')) fields.append(field('Cover-URL (optional)',coverURL));
+  fields.append(field(tr('Status'),status),favoriteField,coverChoice.section,lists.panel,field(tr('Persönliche Notizen'),notes));
+  if (item.id.startsWith('manual:')) fields.append(field(tr('Cover-URL (optional)'),coverURL));
+  const extras=seriesAndLoanEditor(item);
+  fields.append(extras.panel);
+  const trailer=item.kind==='movie'?movieTrailerPanel(item):null;
+  if (trailer) fields.append(movieBadge(item,true),trailer.panel);
+  const playback=playbackAction(item);
+  if (playback) fields.append(playback);
   const progress=input('number','progress',item.progress||0);
   const total=input('number','total',item.total||'');
   progress.min='0'; progress.step='1'; total.min='1'; total.step='1';
   const metrics=text('div',null,'progress-fields');
   if (info.unit) {
-    metrics.append(field(item.kind==='book'?'Aktuelle Seite':'Aktuelle Folge',progress),field(info.unit+' insgesamt',total));
+    metrics.append(field(item.kind==='book'?tr('Aktuelle Seite'):tr('Aktuelle Folge'),progress),field(info.unit+tr(' insgesamt'),total));
     fields.append(metrics);
   }
   const viewing=text('div',null,'detail-stream');
@@ -510,36 +542,41 @@ function openEditor(original) {
   status.addEventListener('change',()=>{syncProgress();syncWatch();});
   total.addEventListener('input',syncProgress); syncProgress(); syncWatch();
   const criteria=ratings[item.kind]||ratings.screen;
-  criteria.forEach((label,index)=>fields.append(stars(item,index,label)));
-  fields.append(text('p','Der Durchschnitt erscheint, sobald alle drei Kriterien bewertet sind.','form-note'));
+  criteria.forEach((label,index)=>fields.append(stars(item,index,tr(label))));
+  fields.append(text('p',tr('Der Durchschnitt erscheint, sobald alle drei Kriterien bewertet sind.'),'form-note'));
   detail.append(fields); form.append(detail,viewing);
   const err=text('p',null,'error form-error'); err.setAttribute('role','alert');
   const actions=text('div',null,'dialog-actions');
-  if (existing) actions.append(button('Entfernen',async()=>{
-    if (!confirm('Diesen Titel aus deinem Regal entfernen?')) return;
+  if (existing) actions.append(button(tr('Entfernen'),async()=>{
+    if (!confirm(tr('Diesen Titel aus deinem Regal entfernen?'))) return;
     try {
       await api('entries','DELETE',{id:item.id});
       await refreshCollection();modal.close();
-      $('notice').textContent='Titel entfernt. Über „Rückgängig“ kannst du ihn wiederherstellen.';
+      $('notice').textContent=tr('Titel entfernt. Über „Rückgängig“ kannst du ihn wiederherstellen.');
     } catch(error) { err.textContent=error.message; }
   },'quiet remove'));
-  actions.append(button('Abbrechen',()=>modal.close(),'quiet'));
-  const save=text('button','Speichern','accent'); save.type='submit';actions.append(save);form.append(err,actions);inner.append(form);
+  actions.append(button(tr('Abbrechen'),()=>modal.close(),'quiet'));
+  const save=text('button',tr('Speichern'),'accent'); save.type='submit';actions.append(save);form.append(err,actions);inner.append(form);
   form.addEventListener('submit',async event=>{
     event.preventDefault();
-    if (!title.value.trim()) { err.textContent='Gib einen Titel ein.'; return; }
+    if (!title.value.trim()) { err.textContent=tr('Gib einen Titel ein.'); return; }
     const genres=genre.genres();
     if (item.kind==='book' && !genres.length) {
-      err.textContent='Wähle mindestens ein Genre für dieses Buch.';
+      err.textContent=tr('Wähle mindestens ein Genre für dieses Buch.');
       genre.focus();
       return;
     }
-    if (coverChoice.loading()) { err.textContent='Warte kurz, bis das Bild vorbereitet ist.';return; }
+    if (coverChoice.loading()) { err.textContent=tr('Warte kurz, bis das Bild vorbereitet ist.');return; }
     const customCover=coverChoice.value();
-    if (customCover && !coverSource({customCover})) { err.textContent='Gib eine HTTPS-Bildadresse ein.';return; }
+    if (customCover && !coverSource({customCover})) { err.textContent=tr('Gib eine HTTPS-Bildadresse ein.');return; }
+    if (trailer?.value() && !trailer.id()) { err.textContent=tr('Gib einen gültigen YouTube-Link ein.');return; }
+    const extra=extras.fields();
+    if (extra.loan?.since && extra.loan.due && extra.loan.due<extra.loan.since) {
+      err.textContent=tr('Die Rückgabe darf nicht vor dem Verleihdatum liegen.');return;
+    }
     const max=Number(total.value)||0;
     const position=status.value==='started'?Number(progress.value)||0:Math.min(item.progress||0,max||Infinity);
-    const updated={...item,title:title.value.trim(),subtitle:subtitle.value.trim(),cover:httpsURL(coverURL.value),customCover,favorite:favorite.checked,genres,lists:lists.chosen(),notes:notes.value.trim(),status:status.value,total:max,progress:position};
+    const updated={...item,...extra,trailer:trailer?.id()||'',title:title.value.trim(),subtitle:subtitle.value.trim(),cover:httpsURL(coverURL.value),customCover,favorite:favorite.checked,genres,lists:lists.chosen(),notes:notes.value.trim(),status:status.value,total:max,progress:position};
     save.disabled=true;
     try {
       await api('entries','PUT',updated);
@@ -555,72 +592,84 @@ function updateControls() {
   const message=text('p',null,'form-note');
   message.setAttribute('role','status');
   let timer;
-  const check=button('Nach Updates suchen',()=>refresh('POST'),'quiet');
+  const check=button('Check for updates',()=>refresh('POST'),'quiet');
   check.disabled=true;
   const refresh=async (method='GET')=>{
     clearTimeout(timer);
     if (!controls.isConnected || !modal.open) return;
-    if (method==='POST') { check.disabled=true; message.textContent='Suche nach Updates …'; }
+    if (method==='POST') { check.disabled=true; message.textContent='Checking for updates…'; }
     try {
       const status=await api('update',method);
       const messages={
-        current:'Version '+status.version+' ist aktuell.',
-        checking:'Suche nach Updates …',
-        downloading:'Version '+status.version+' wird heruntergeladen …',
-        ready:'Version '+status.version+' ist bereit. Beim Beenden wird das Update installiert.'
+        current:status.version+' is up to date.',
+        checking:'Checking for updates…',
+        downloading:'Downloading version '+status.version+'…',
+        ready:'Version '+status.version+' is ready and will install when you exit.'
       };
       const waiting=status.state==='checking'||status.state==='downloading';
-      message.textContent=messages[status.state]||status.message||'';
+      message.textContent=messages[status.state]||(status.message?tr(status.message,'en'):'');
       check.disabled=waiting||status.state==='ready'||status.state==='unavailable';
       if (waiting) timer=setTimeout(refresh,650);
     } catch(e) {
-      message.textContent=e.message;
+      message.textContent=e.englishMessage||e.message;
       check.disabled=false;
     }
   };
-  controls.append(text('p','Installierte Version '+state.prefs.version,'muted'),check,message);
+  controls.append(text('p','Installed version '+state.prefs.version,'muted'),check,message);
   return {controls,refresh};
 }
 
 function openSettings() {
   if (!state.prefs) return;
-  const inner=show('Einstellungen');
+  const inner=show('Settings');
+  inner.lang='en';
+  inner.querySelector('.dialog-title button')?.setAttribute('aria-label','Close');
   const update=updateControls();
   const imports=text('div',null,'history-actions');
-  imports.append(button('Streamingverlauf importieren',openHistory,'quiet'),
-    button('Streamingimport rückgängig machen',openHistoryUndo,'quiet'),
-    button('Importierte Titel vervollständigen',()=>openEnrichment(),'quiet'));
-  const credit=text('p','Serienbilder von ','form-note');
+  imports.append(button('Import streaming history',openHistory,'quiet'),
+    button('Undo streaming import',openHistoryUndo,'quiet'),
+    button('Complete imported titles',()=>openEnrichment(),'quiet'));
+  const credit=text('p','TV artwork from ','form-note');
   credit.append(link('https://www.tvmaze.com/','TVmaze'), ' · ',link('https://creativecommons.org/licenses/by-sa/4.0/','CC BY-SA'));
   inner.append(update.controls,imports,credit);
   update.refresh();
   const form=text('form',null,'settings-form');
   const providers=providerPicker();
-  const region=input('text','region',state.prefs.region);region.required=true;region.maxLength=2;region.pattern='[a-zA-Z]{2}';
-  const watch=input('password','watch','',state.prefs.hasWatchmode?'Schlüssel gespeichert':'API-Schlüssel');
-  const tmdb=input('password','tmdb','',state.prefs.hasTmdb?'Token gespeichert':'API Read Access Token');
+  const region=document.createElement('select');
+  region.name='region';
+  const markets=[...new Set([...regionCodes,state.prefs.region||'DE'])].sort((a,b)=>regionName(a,'en').localeCompare(regionName(b,'en'),'en'));
+  region.append(...markets.map(code=>option(code,regionName(code,'en')+' ('+code+')')));
+  region.value=state.prefs.region||'DE';
+  const language=document.createElement('select');
+  language.name='language';
+  language.append(option('de','German (Deutsch)'),option('en','English'),option('zh-Hans','Chinese, Simplified (简体中文)'));
+  language.value=state.prefs.language||'de';
+  const watch=input('password','watch','',state.prefs.hasWatchmode?'Key saved':'API key');
+  const tmdb=input('password','tmdb','',state.prefs.hasTmdb?'Token saved':'API Read Access Token');
   watch.autocomplete='off';tmdb.autocomplete='off';
   const removeWatch=input('checkbox','removeWatch');
   const removeTmdb=input('checkbox','removeTmdb');
   for(const [node,on] of [[removeWatch,state.prefs.hasWatchmode],[removeTmdb,state.prefs.hasTmdb]]) node.disabled=!on;
-  form.append(field('Streaming-Land (DE, AT, CH …)',region),providers.fieldset,
-    field('Watchmode für Anbieter und Preise',watch),link('https://api.watchmode.com/requestApiKey/','Watchmode-Schlüssel für dein Land beziehen'));
-  if (state.prefs.hasWatchmode) { const label=field('Watchmode-Schlüssel entfernen',removeWatch);label.className='check';form.append(label); }
-  form.append(field('TMDB für deutsche Titel und weitere Anbieter',tmdb),link('https://www.themoviedb.org/settings/api','TMDB-API-Zugang öffnen'));
-  if (state.prefs.hasTmdb) { const label=field('TMDB-Token entfernen',removeTmdb);label.className='check';form.append(label); }
-  form.append(text('p','This product uses the TMDB API but is not endorsed or certified by TMDB. Streamingdaten von Watchmode und JustWatch. Titeldaten auch von Cinemeta, der Deutschen Nationalbibliothek und Open Library.','form-note'));
+  form.append(field('App language',language),field('Country for streaming and charts',region),providers.fieldset,
+    field('Watchmode for providers and prices',watch),link('https://api.watchmode.com/requestApiKey/','Get a Watchmode key for your country'));
+  if (state.prefs.hasWatchmode) { const label=field('Remove Watchmode key',removeWatch);label.className='check';form.append(label); }
+  form.append(field('TMDB for localized titles and additional providers',tmdb),link('https://www.themoviedb.org/settings/api','Open TMDB API settings'));
+  if (state.prefs.hasTmdb) { const label=field('Remove TMDB token',removeTmdb);label.className='check';form.append(label); }
+  form.append(text('p','This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming data from Watchmode and JustWatch. Metadata also comes from Cinemeta, the German National Library and Open Library.','form-note'));
   const err=text('p',null,'error form-error');err.setAttribute('role','alert');
-  const save=text('button','Speichern','accent');save.type='submit';
+  const save=text('button','Save','accent');save.type='submit';
   form.append(err,save);inner.append(form);
   form.addEventListener('submit',async event=>{
     event.preventDefault();save.disabled=true;
     try {
-      await api('settings','PUT',{region:region.value.toUpperCase(),token:tmdb.value,watchmode:watch.value,remove:removeTmdb.checked,removeWatchmode:removeWatch.checked,providers:providers.selected()});
+      await api('settings','PUT',{region:region.value,language:language.value,token:tmdb.value,watchmode:watch.value,remove:removeTmdb.checked,removeWatchmode:removeWatch.checked,providers:providers.selected()});
       state.prefs=await api('settings');
       state.streamCache.clear();
-      charts.clear();ticker.key='';
+      charts.clear();ticker.key='';ticker.kind='';
+      trailerCache.clear();
+      applyLanguage();
       modal.close();render();
-    } catch(error) { err.textContent=error.message; }
+    } catch(error) { err.textContent=error.englishMessage||error.message; }
     finally { save.disabled=false; }
   });
 }
@@ -640,6 +689,8 @@ $('settings').addEventListener('click',openSettings);
 $('only-providers').addEventListener('change',event=>{ state.onlyProviders=event.target.checked;render(); });
 $('only-subscriptions').addEventListener('change',event=>{ state.onlySubscriptions=event.target.checked;render(); });
 $('favorites-filter').addEventListener('click',()=>{state.onlyFavorites=!state.onlyFavorites;render();});
+$('series-overview').addEventListener('click',()=>showSeriesDialog());
+$('loan-overview').addEventListener('click',openLoans);
 $('new-list').addEventListener('click',newCollectionList);
 $('duplicates').addEventListener('click',openDuplicates);
 $('undo-collection').addEventListener('click',undoLastCollectionChange);
@@ -652,11 +703,11 @@ $('genre').addEventListener('change',event=>{ state.genre=event.target.value;ren
 $('sort').addEventListener('change',event=>{ state.sort=event.target.value;render(); });
 $('exit').addEventListener('click',async()=>{
   try { await api('exit','POST'); } catch { return; }
-  document.body.replaceChildren(text('main','Die Mediathek ist beendet.'));
+  document.body.replaceChildren(text('main',tr('Die Mediathek ist beendet.')));
   window.close();
 });
 initChart();
-Promise.all([api('collection'),api('settings')]).then(([data,prefs])=>{
-  acceptCollection(data);state.prefs=prefs;state.view=prefs.view||state.view;tabs();render();
+Promise.all([api('collection'),api('settings'),api('goals')]).then(([data,prefs,goals])=>{
+  acceptCollection(data);state.prefs=prefs;state.goals=goals;state.view=prefs.view||state.view;applyLanguage();render();
 }).catch(error=>{ $('notice').textContent=error.message; });
 setInterval(()=>{ if(!modal.open && !document.hidden) render(); },600000);

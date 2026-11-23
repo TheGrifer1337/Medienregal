@@ -176,7 +176,7 @@ func scanEpic(dir string, add func(entry)) {
 			continue
 		}
 		key := launcherID(manifest.CatalogNamespace + ":" + manifest.CatalogItemID + ":" + manifest.AppName)
-		add(entry{ID: "game:epic:" + key, Title: manifest.DisplayName, Source: "Epic Games"})
+		add(entry{ID: "game:epic:" + key, Title: manifest.DisplayName, Source: "Epic Games", launchData: epicLaunchURL(manifest.AppName, manifest.CatalogNamespace, manifest.CatalogItemID)})
 	}
 }
 
@@ -258,7 +258,7 @@ func readXboxConfig(root, folder string, add func(entry)) bool {
 	if key == "" {
 		key = folder
 	}
-	add(entry{ID: "game:xbox:" + launcherID(key), Title: title, Source: "Xbox"})
+	add(entry{ID: "game:xbox:" + launcherID(key), Title: title, Source: "Xbox", launchData: config.Identity.Name})
 	return true
 }
 
@@ -323,6 +323,7 @@ func (a *app) importLaunchers(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		known[item.ID], known["title:"+historyKey(item.Title)] = true, true
+		item.launchData = ""
 		added = append(added, item)
 	}
 	next := a.data

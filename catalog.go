@@ -78,6 +78,7 @@ type cinemeta struct {
 	TrailerStreams []struct{ YtID string }
 	Trailer        []string
 	Genre          []string
+	IMDbRating     json.RawMessage `json:"imdbRating"`
 	Country        string
 	Videos         []struct {
 		Season  int
@@ -105,7 +106,11 @@ func (movie cinemeta) internal(kind string) entry {
 		}
 		episodes = len(seen)
 	}
-	return entry{ID: kind + ":imdb:" + movie.ID, Kind: kind, Title: movie.Name, Subtitle: movie.ReleaseInfo, Cover: movie.Poster, Genres: prettyGenres(genres), Total: episodes, Source: "Cinemeta", Description: limitDescription(movie.Description)}
+	score := 0.0
+	if kind == "movie" {
+		score = parseIMDb(movie.IMDbRating)
+	}
+	return entry{ID: kind + ":imdb:" + movie.ID, Kind: kind, IMDb: score, Title: movie.Name, Subtitle: movie.ReleaseInfo, Cover: movie.Poster, Genres: prettyGenres(genres), Total: episodes, Source: "Cinemeta", Description: limitDescription(movie.Description)}
 }
 
 func searchCinemeta(ctx context.Context, kind, query string) ([]entry, error) {
@@ -173,7 +178,7 @@ func (title tmdbTitle) internal(kind string) entry {
 	return entry{ID: kind + ":tmdb:" + strconv.Itoa(title.ID), Kind: kind, Title: name, Subtitle: date, Cover: cover, Total: title.Total, Genres: prettyGenres(genres), Source: "TMDB", Description: limitDescription(title.Overview), Aliases: mergeLabels(nil, []string{original})}
 }
 
-func searchTMDB(ctx context.Context, kind, query, token string) ([]entry, error) {
+func searchTMDB(ctx context.Context, kind, query, token string, locales ...string) ([]entry, error) {
 	var payload struct{ Results []tmdbTitle }
 	address := "https://api.themoviedb.org/3/search/" + tmdbKind(kind) + "?language=de-DE&include_adult=false&query=" + url.QueryEscape(query)
 	if err := getJSON(ctx, address, token, &payload); err != nil {
@@ -305,9 +310,9 @@ func (a *app) search(w http.ResponseWriter, r *http.Request) {
 	case kind == "book":
 		items, err = combinedBooks(r.Context(), params)
 	case kind == "game":
-		items, err = searchGames(r.Context(), query, prefs.Region)
+		items, err = searchGames(r.Context(), query, prefs.Region, prefs.steamLocale())
 	case prefs.TMDB != "":
-		items, err = searchTMDB(r.Context(), kind, query, prefs.TMDB)
+		items, err = searchTMDB(r.Context(), kind, query, prefs.TMDB, prefs.tmdbLocale())
 		if err != nil || len(items) == 0 {
 			items, err = searchCinemeta(r.Context(), kind, query)
 		}
@@ -333,6 +338,7 @@ func (a *app) details(w http.ResponseWriter, r *http.Request) {
 	kind, source, key := parts[0], parts[1], parts[2]
 	ctx := r.Context()
 	var found entry
+	prefs := a.getSettings()
 	trailer := ""
 	withTrailer := r.URL.Query().Get("trailer") == "1"
 	err := errors.New("Kein Katalogeintrag")
@@ -340,61 +346,25 @@ func (a *app) details(w http.ResponseWriter, r *http.Request) {
 	case kind == "game" && source == "wikidata" && wikidataID.MatchString(key):
 		found, err = wikidataGame(ctx, key)
 	case kind == "game" && source == "steam" && numericID.MatchString(key):
-		found, err = steamGame(ctx, key, a.getSettings().Region)
+		found, err = steamGame(ctx, key, prefs.Region, prefs.steamLocale())
 	case source == "imdb" && imdbID.MatchString(key) && (kind == "movie" || kind == "series"):
 		var payload struct{ Meta cinemeta }
 		err = getJSON(ctx, "https://v3-cinemeta.strem.io/meta/"+kind+"/"+key+".json", "", &payload)
 		found = payload.Meta.internal(kind)
 		if withTrailer {
-			for _, item := range payload.Meta.Trailers {
-				if strings.EqualFold(item.Type, "Trailer") && youtubeID.MatchString(item.Source) {
-					trailer = item.Source
-					break
-				}
-			}
-			if trailer == "" {
-				for _, item := range payload.Meta.TrailerStreams {
-					if youtubeID.MatchString(item.YtID) {
-						trailer = item.YtID
-						break
-					}
-				}
-			}
-			if trailer == "" {
-				for _, id := range payload.Meta.Trailer {
-					if youtubeID.MatchString(id) {
-						trailer = id
-						break
-					}
-				}
-			}
+			trailer = payload.Meta.youtubeTrailer()
 		}
 	case source == "tmdb" && numericID.MatchString(key) && (kind == "movie" || kind == "series"):
 		var payload tmdbTitle
-		params := url.Values{"language": {"de-DE"}}
+		params := url.Values{"language": {prefs.tmdbLocale()}}
 		if withTrailer {
 			params.Set("append_to_response", "videos")
-			params.Set("include_video_language", "de,en")
+			params.Set("include_video_language", prefs.languageCode()+",en")
 		}
 		err = getJSON(ctx, "https://api.themoviedb.org/3/"+tmdbKind(kind)+"/"+key+"?"+params.Encode(), a.getSettings().TMDB, &payload)
 		found = payload.internal(kind)
 		if withTrailer {
-			score := -1
-			for _, clip := range payload.Videos.Results {
-				if clip.Site != "YouTube" || clip.Type != "Trailer" || !youtubeID.MatchString(clip.Key) {
-					continue
-				}
-				rank := 0
-				if clip.Language == "de" {
-					rank += 2
-				}
-				if clip.Official {
-					rank++
-				}
-				if rank > score {
-					score, trailer = rank, clip.Key
-				}
-			}
+			trailer = payload.youtubeTrailer(prefs.languageCode())
 		}
 	case kind == "book" && source == "ol" && editionID.MatchString(key):
 		var payload bookEdition
@@ -430,4 +400,43 @@ func (a *app) details(w http.ResponseWriter, r *http.Request) {
 		entry
 		Trailer string `json:"trailer,omitempty"`
 	}{found, trailer})
+}
+
+func (m cinemeta) youtubeTrailer() string {
+	for _, item := range m.Trailers {
+		if strings.EqualFold(item.Type, "Trailer") && youtubeID.MatchString(item.Source) {
+			return item.Source
+		}
+	}
+	for _, item := range m.TrailerStreams {
+		if youtubeID.MatchString(item.YtID) {
+			return item.YtID
+		}
+	}
+	for _, id := range m.Trailer {
+		if youtubeID.MatchString(id) {
+			return id
+		}
+	}
+	return ""
+}
+
+func (t tmdbTitle) youtubeTrailer(language string) string {
+	score, trailer := -1, ""
+	for _, clip := range t.Videos.Results {
+		if clip.Site != "YouTube" || clip.Type != "Trailer" || !youtubeID.MatchString(clip.Key) {
+			continue
+		}
+		rank := 0
+		if clip.Language == language {
+			rank += 2
+		}
+		if clip.Official {
+			rank++
+		}
+		if rank > score {
+			score, trailer = rank, clip.Key
+		}
+	}
+	return trailer
 }

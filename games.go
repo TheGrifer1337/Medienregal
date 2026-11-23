@@ -11,8 +11,12 @@ import (
 
 var wikidataID = regexp.MustCompile(`^Q[0-9]+$`)
 
-func searchGames(ctx context.Context, title, region string) ([]entry, error) {
-	params := url.Values{"term": {title}, "cc": {region}, "l": {"german"}}
+func searchGames(ctx context.Context, title, region string, locales ...string) ([]entry, error) {
+	language := "german"
+	if len(locales) > 0 {
+		language = locales[0]
+	}
+	params := url.Values{"term": {title}, "cc": {region}, "l": {language}}
 	var result struct {
 		Items []struct {
 			ID         int
@@ -31,8 +35,12 @@ func searchGames(ctx context.Context, title, region string) ([]entry, error) {
 	return items, err
 }
 
-func steamGame(ctx context.Context, key, region string) (entry, error) {
-	params := url.Values{"appids": {key}, "cc": {region}, "l": {"german"}}
+func steamGame(ctx context.Context, key, region string, locales ...string) (entry, error) {
+	language := "german"
+	if len(locales) > 0 {
+		language = locales[0]
+	}
+	params := url.Values{"appids": {key}, "cc": {region}, "l": {language}}
 	var result map[string]struct {
 		Success bool
 		Data    struct {

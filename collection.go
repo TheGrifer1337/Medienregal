@@ -208,6 +208,18 @@ func (a *app) mergeCollection(w http.ResponseWriter, r *http.Request) {
 	}
 	item := *left
 	item.Favorite = left.Favorite || right.Favorite
+	if item.Series == "" {
+		item.Series, item.Sequence = right.Series, right.Sequence
+	}
+	if item.Loan == nil {
+		item.Loan = right.Loan
+	}
+	if item.Trailer == "" {
+		item.Trailer = right.Trailer
+	}
+	if item.IMDb == 0 {
+		item.IMDb = right.IMDb
+	}
 	if item.CustomCover == "" {
 		item.CustomCover = right.CustomCover
 	}

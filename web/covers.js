@@ -7,7 +7,7 @@ function coverSource(item) {
 
 async function prepareCover(file) {
   if (!['image/jpeg','image/png','image/webp','image/gif','image/bmp','image/avif'].includes(file.type)||file.size>20*1024*1024) {
-    throw new Error('Wähle eine Bilddatei mit höchstens 20 MB.');
+    throw new Error(tr('Wähle eine Bilddatei mit höchstens 20 MB.'));
   }
   const bitmap=await createImageBitmap(file);
   try {
@@ -23,13 +23,13 @@ async function prepareCover(file) {
       const image=canvas.toDataURL('image/jpeg',quality);
       if (image.length<=330000) return image;
     }
-    throw new Error('Das Bild konnte nicht ausreichend verkleinert werden.');
+    throw new Error(tr('Das Bild konnte nicht ausreichend verkleinert werden.'));
   } finally { bitmap.close(); }
 }
 
 function customCoverEditor(item,refresh) {
   const section=text('details',null,'genre-picker cover-editor');
-  section.append(text('summary','Eigenes Cover'));
+  section.append(text('summary',tr('Eigenes Cover')));
   const file=input('file','custom-cover-file');
   file.accept='image/jpeg,image/png,image/webp,image/gif,image/bmp,image/avif';
   const address=input('url','custom-cover-url',httpsURL(item.customCover));
@@ -39,11 +39,11 @@ function customCoverEditor(item,refresh) {
   let revision=0;
   let loading=false;
   const value=()=>address.value.trim()||local;
-  const reset=button('Standardcover wiederherstellen',()=>{
+  const reset=button(tr('Standardcover wiederherstellen'),()=>{
     revision++;
     loading=false;
     file.value='';address.value='';local='';
-    status.textContent='Beim Speichern wird das Standardcover übernommen.';
+    status.textContent=tr('Beim Speichern wird das Standardcover übernommen.');
     refresh('');
   },'quiet');
   address.addEventListener('input',()=>refresh(value()));
@@ -52,20 +52,20 @@ function customCoverEditor(item,refresh) {
     if(!selected) return;
     const generation=++revision;
     loading=true;
-    status.textContent='Bild wird vorbereitet …';
+    status.textContent=tr('Bild wird vorbereitet …');
     try {
       const prepared=await prepareCover(selected);
       if(generation!==revision) return;
       local=prepared;address.value='';
-      status.textContent='Bild ausgewählt.';
+      status.textContent=tr('Bild ausgewählt.');
       refresh(local);
     } catch(e) {
-      if(generation===revision) status.textContent=e.message||'Die Bilddatei konnte nicht gelesen werden.';
+      if(generation===revision) status.textContent=e.message||tr('Die Bilddatei konnte nicht gelesen werden.');
     } finally {
       if(generation===revision) {loading=false;file.value='';}
     }
   });
-  section.append(field('Bilddatei auswählen',file),field('Oder HTTPS-Bildadresse',address),status,reset);
+  section.append(field(tr('Bilddatei auswählen'),file),field(tr('Oder HTTPS-Bildadresse'),address),status,reset);
   return {section,value,loading:()=>loading};
 }
 
@@ -147,9 +147,9 @@ function cover(item,credit) {
     image.addEventListener('load',()=>{
       if (image.naturalWidth<=1||image.naturalHeight<=1) {remove();return;}
       if (!candidate.source) return;
-      node.title='Cover von '+candidate.source;
+      node.title=tr('Cover von ')+candidate.source;
       if (credit && node.isConnected) {
-        const label='Cover von '+candidate.source;
+        const label=tr('Cover von ')+candidate.source;
         credit.replaceChildren(httpsURL(candidate.page)?link(candidate.page,label):label);
       }
     },{once:true});

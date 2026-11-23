@@ -32,42 +32,50 @@ var version = "1.0"
 var assets embed.FS
 
 type entry struct {
-	ID            string   `json:"id"`
-	Kind          string   `json:"kind"`
-	Title         string   `json:"title"`
-	Subtitle      string   `json:"subtitle,omitempty"`
-	Cover         string   `json:"cover,omitempty"`
-	CustomCover   string   `json:"customCover,omitempty"`
-	Favorite      bool     `json:"favorite,omitempty"`
-	Genres        []string `json:"genres,omitempty"`
-	Total         int      `json:"total"`
-	Progress      int      `json:"progress"`
-	Status        string   `json:"status,omitempty"`
-	Ratings       [3]int   `json:"ratings"` // Each unit represents half a star.
-	Source        string   `json:"source,omitempty"`
-	CatalogID     string   `json:"catalogId,omitempty"`
-	Aliases       []string `json:"aliases,omitempty"`
-	Description   string   `json:"description,omitempty"`
-	Notes         string   `json:"notes,omitempty"`
-	Lists         []string `json:"lists,omitempty"`
-	CompletedYear int      `json:"completedYear,omitempty"`
-	ImportEdited  bool     `json:"importEdited,omitempty"`
+	ID            string     `json:"id"`
+	Kind          string     `json:"kind"`
+	Title         string     `json:"title"`
+	Subtitle      string     `json:"subtitle,omitempty"`
+	Series        string     `json:"series,omitempty"`
+	Sequence      float64    `json:"sequence,omitempty"`
+	Loan          *mediaLoan `json:"loan,omitempty"`
+	Trailer       string     `json:"trailer,omitempty"`
+	IMDb          float64    `json:"imdb,omitempty"`
+	Cover         string     `json:"cover,omitempty"`
+	CustomCover   string     `json:"customCover,omitempty"`
+	Favorite      bool       `json:"favorite,omitempty"`
+	Genres        []string   `json:"genres,omitempty"`
+	Total         int        `json:"total"`
+	Progress      int        `json:"progress"`
+	Status        string     `json:"status,omitempty"`
+	Ratings       [3]int     `json:"ratings"` // Each unit represents half a star.
+	Source        string     `json:"source,omitempty"`
+	CatalogID     string     `json:"catalogId,omitempty"`
+	Aliases       []string   `json:"aliases,omitempty"`
+	Description   string     `json:"description,omitempty"`
+	Notes         string     `json:"notes,omitempty"`
+	Lists         []string   `json:"lists,omitempty"`
+	CompletedYear int        `json:"completedYear,omitempty"`
+	launchData    string
+	ImportEdited  bool `json:"importEdited,omitempty"`
 }
 
 type settings struct {
 	TMDB      string   `json:"tmdb"`
 	Watchmode string   `json:"watchmode"`
+	Language  string   `json:"language,omitempty"`
 	Region    string   `json:"region"`
 	Providers []string `json:"providers,omitempty"`
 	View      string   `json:"view,omitempty"`
 }
 
 type library struct {
-	Entries           []entry         `json:"entries"`
-	Settings          settings        `json:"settings"`
-	LastHistoryImport []historyChange `json:"lastHistoryImport,omitempty"`
-	Lists             []string        `json:"lists,omitempty"`
-	Undo              *collectionUndo `json:"undo,omitempty"`
+	Entries           []entry                `json:"entries"`
+	Settings          settings               `json:"settings"`
+	Goals             map[int]map[string]int `json:"goals,omitempty"`
+	LastHistoryImport []historyChange        `json:"lastHistoryImport,omitempty"`
+	Lists             []string               `json:"lists,omitempty"`
+	Undo              *collectionUndo        `json:"undo,omitempty"`
 }
 
 type app struct {
@@ -127,6 +135,9 @@ func valid(item entry) bool {
 		return false
 	}
 	if len(item.Notes) > 16000 || len(item.Lists) > 100 || len(item.Description) > 20000 || !validCustomCover(item.CustomCover) {
+		return false
+	}
+	if !validMediaExtras(item) {
 		return false
 	}
 	if item.Total < 0 || item.Progress < 0 || (item.Total > 0 && item.Progress > item.Total) {
@@ -226,13 +237,14 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if r.Method == "GET" {
-		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers, "view": a.data.Settings.View, "chartGenres": chartGenreOptions()})
+		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "language": a.data.Settings.locale(), "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers, "view": a.data.Settings.View, "chartGenres": chartGenreOptions()})
 		return
 	}
 	var request struct {
 		Token           string
 		Watchmode       string
 		Region          string
+		Language        string
 		Remove          bool
 		RemoveWatchmode bool
 		Providers       *[]string
@@ -246,6 +258,15 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next.Settings.Region = request.Region
+	if request.Language != "" {
+		switch request.Language {
+		case "de", "en", "zh-Hans":
+			next.Settings.Language = request.Language
+		default:
+			fail(w, 400, "Unsupported interface language.")
+			return
+		}
+	}
 	if request.Providers != nil {
 		if len(*request.Providers) > 100 {
 			fail(w, 400, "Zu viele Streaminganbieter ausgewählt.")
@@ -298,6 +319,14 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/search", a.search)
 	mux.HandleFunc("GET /api/details", a.details)
 	mux.HandleFunc("GET /api/cover", a.lookupCover)
+	mux.HandleFunc("GET /api/imdb-rating", a.imdbRating)
+	mux.HandleFunc("GET /api/movie-trailer", a.movieTrailer)
+	mux.HandleFunc("GET /api/movie-series", a.movieSeries)
+	mux.HandleFunc("GET /api/goals", a.goals)
+	mux.HandleFunc("PUT /api/goals", a.goals)
+	mux.HandleFunc("GET /api/barcode", a.barcodeLookup)
+	mux.HandleFunc("POST /api/barcode", a.scanBarcode)
+	mux.HandleFunc("POST /api/launch-game", a.launchGame)
 	mux.HandleFunc("GET /api/streaming", a.streaming)
 	mux.HandleFunc("GET /api/collection", a.collection)
 	mux.HandleFunc("GET /api/launchers", a.previewLaunchers)

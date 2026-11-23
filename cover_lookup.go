@@ -56,7 +56,7 @@ func (q coverQuery) search(ctx context.Context, prefs settings) []coverCandidate
 		}
 		if prefs.TMDB != "" {
 			sources = append(sources, func() coverCandidate {
-				items, _ := searchTMDB(ctx, q.Kind, q.Title, prefs.TMDB)
+				items, _ := searchTMDB(ctx, q.Kind, q.Title, prefs.TMDB, prefs.tmdbLocale())
 				return q.catalogCover(items)
 			})
 		}
@@ -72,7 +72,7 @@ func (q coverQuery) search(ctx context.Context, prefs settings) []coverCandidate
 			if id, ok := q.catalogKey("steam"); ok && numericID.MatchString(id) {
 				return coverCandidate{URL: "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/" + id + "/library_600x900.jpg", Source: "Steam"}
 			}
-			items, _ := searchGames(ctx, q.Title, prefs.Region)
+			items, _ := searchGames(ctx, q.Title, prefs.Region, prefs.steamLocale())
 			return q.catalogCover(items)
 		}, func() coverCandidate { return q.wikimedia(ctx) })
 	}

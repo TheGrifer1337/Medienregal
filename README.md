@@ -10,7 +10,7 @@ Filme und Serien werden in Cinemeta gesucht, Bücher und Manga in der Deutschen 
 
 Unter **Alle Genres** stehen je Bereich gängige Genres und deine eigenen Einträge zur Auswahl. Beim Hinzufügen eines Buches schlägt die App anhand der Katalogangaben ein Hauptgenre vor. Dieses kannst du ändern oder bei fehlenden Katalogangaben selbst wählen. Weitere Genres bleiben als Filter verfügbar.
 
-Für automatische Streamingangebote in „Möchte ich sehen“ trage unter **Einstellungen** einen Watchmode-API-Schlüssel für dein Land ein. Die App zeigt Abo, kostenlose Angebote, Leihen und Kaufen samt gemeldeten Preisen. Das vorgewählte Land ist Deutschland. Ein TMDB-Read-Access-Token ist optional und ergänzt Titel und Streaminganbieter. TMDB liefert hier keine Einzelpreise. Ohne Schlüssel verlinkt die App auf JustWatch. Anbieterangaben können sich ändern und bei Serien nur Teile der Serie abdecken.
+Für automatische Streamingangebote in „Möchte ich sehen“ trage unter **Settings** einen Watchmode-API-Schlüssel für dein Land ein. Die App zeigt Abo, kostenlose Angebote, Leihen und Kaufen samt gemeldeten Preisen. Das vorgewählte Land ist Deutschland. Ein TMDB-Read-Access-Token ist optional und ergänzt Titel und Streaminganbieter. TMDB liefert hier keine Einzelpreise. Ohne Schlüssel verlinkt die App auf JustWatch. Anbieterangaben können sich ändern und bei Serien nur Teile der Serie abdecken.
 
 Unter **Einstellungen → Meine Streaminganbieter** kannst du die von dir genutzten Dienste auswählen und weitere Namen ergänzen. In „Möchte ich sehen“ werden nur noch Angebote dieser Dienste angezeigt. **Nur bei meinen Anbietern** blendet auch Titel ohne bestätigtes passendes Angebot aus. Diese Filter brauchen Live-Angebote von Watchmode oder TMDB.
 
@@ -24,9 +24,9 @@ Titel können mehreren **eigenen Listen** angehören und persönliche Notizen sp
 
 **In meinem Abo enthalten** zeigt in der Merkliste nur bestätigte Abonnement-Angebote deiner Streaminganbieter. Beim Katalogabgleich für importierte Titel werden eindeutige Ergebnisse automatisch ergänzt. Mehrere Treffer kannst du auswählen.
 
-Die durchlaufende Jahresliste erscheint bei Filmen, Serien und Büchern. Sie zeigt bis zu 50 Treffer, geordnet nach der jeweiligen Katalogquelle. Die Liste für Filme und Serien nutzt TMDB bei eingerichtetem Zugang, sonst Cinemeta, Wikidata oder IMDbAPI. Bei Wikidata bestimmt die Anzahl verknüpfter Artikel die Reihenfolge. Bücher werden nach den Leselisten von Open Library gereiht. Verfügbare YouTube-Trailer starten in der Film- oder Serienvorschau. Beim Schließen wird der Player beendet. Ein Titel wird erst durch Antippen eines Status gespeichert.
+Die durchlaufende Jahresliste zeigt in jeder Medienart bis zu 50 Treffer für das eingestellte Land, geordnet nach der jeweiligen Katalogquelle. Verfügbare YouTube-Trailer starten in der Film- oder Serienvorschau. Beim Schließen wird der Player beendet. Ein Titel wird erst durch Antippen eines Status gespeichert.
 
-Im Reiter **Spiele** kannst du Titel über Steam suchen oder selbst anlegen. Spiele lassen sich nach **Qualität**, **Gameplay** und **Storyline** bewerten. Die Spielecharts verwenden Wikidata oder die neuesten Veröffentlichungen auf Steam. Die Quelle steht an der Leiste.
+Im Reiter **Spiele** kannst du Titel über Steam suchen oder selbst anlegen. Spiele lassen sich nach **Qualität**, **Gameplay** und **Storyline** bewerten. Die Spielecharts zeigen Bestseller des Jahres oder aktuelle Veröffentlichungen aus dem regionalen Steam-Shop. Die Quelle steht an der Leiste.
 
 Mit **Chart-Genre** kannst du die Jahresliste auf ein Genre eingrenzen. Beim Start und beim Wechsel des Medienbereichs werden zuerst alle Genres gezeigt. Die sichtbare Jahresliste lädt nach Ablauf ihres Zwischenspeichers erneut, sobald sie frei sichtbar ist. Eigene Listen sind direkt als Filter sichtbar. Das Herz auf jeder Titelkarte markiert Favoriten. Über **Eigenes Cover** im Titeldialog kannst du eine lokale Bilddatei oder HTTPS-Bildadresse wählen und später zur Kataloggrafik zurückkehren.
 
@@ -46,8 +46,28 @@ Der Standardordner ist `%LOCALAPPDATA%\Programs\Medienregal`. Im Installer kann 
 
 Für GitHub ist ein eigenes öffentliches Repository vorgesehen. Lege die Dateien aus diesem Ordner im Hauptzweig `main` ab. Der Workflow veröffentlicht beim Push von `VERSION` den Installer als Release und kann für die erste Veröffentlichung auch manuell unter **Actions → Windows-Release** gestartet werden. Die `VERSION`-Datei erhöht sich für jedes Update um einen Schritt. Auf 1.9 folgt 2.0. Der erste lokale Installer ist fest auf `TheGrifer1337/Medienregal` eingestellt. Bei abweichendem Reponamen installiere zuerst den dort veröffentlichten Installer.
 
-Die App prüft beim Start und über **Einstellungen → Nach Updates suchen** alle öffentlichen stabilen Releases ihres Repositories und lädt die höchste neuere Version mit gültiger SHA-256-Prüfsumme. Wenn das Programm geschlossen wird, installiert es das fertig geladene Update im Hintergrund in denselben Ordner. Ein Programmneustart ist erst für die Nutzung der neuen Version nötig.
+Die App prüft beim Start und über **Settings → Check for updates** alle öffentlichen stabilen Releases ihres Repositories und lädt die höchste neuere Version mit gültiger SHA-256-Prüfsumme. Wenn das Programm geschlossen wird, installiert es das fertig geladene Update im Hintergrund in denselben Ordner. Ein Programmneustart ist erst für die Nutzung der neuen Version nötig.
 
 ### Automatische Coversuche
 
 Fehlt das Cover eines sichtbaren Titels oder lässt sich das Bild nicht laden, sucht die Mediathek nach passenden Bildern in weiteren Online-Katalogen. Je nach Titelart nutzt sie Google Books und Open Library, TVmaze, TMDB (mit hinterlegtem Token), MetaHub, Cinemeta, Steam und Wikimedia Commons. Bekannte Kennungen wie ISBN oder IMDb-ID helfen beim Abgleich. Eigene Cover werden zuerst angezeigt. In der Detailansicht steht die Quelle eines gefundenen Ersatzcovers.
+
+### Wiedergabe, Reihen, Jahresziele und Verleih
+
+**Ansehen** zeigt die Abspiel- und Angebotslinks für Filme und Serien. Watchmode liefert Anbieterlinks, soweit sie für den Titel und das Land gemeldet werden. Mit TMDB oder ohne Streaming-API führt die Mediathek bei Bedarf zu JustWatch. **Spiel starten** verwendet für lokal erkannte Titel Steam, den Epic Games Launcher oder einen eindeutigen registrierten Xbox-Startlink unter Windows.
+
+Speichere in der Detailansicht unter **Reihe und Verleih** den Namen einer Reihe oder eines Universums und eine Position. Die Übersicht **Reihen und Universen** sortiert die zugeordneten Titel medienübergreifend. Bei Filmen mit TMDB-Daten und hinterlegtem Token steht zusätzlich die Veröffentlichungsreihenfolge einer katalogisierten Filmreihe zur Verfügung. Zur selben Detailansicht gehören ausgeliehene Medien, Empfänger und optionales Leih- und Rückgabedatum. **Verliehene Medien** sammelt diese Einträge in einer Übersicht.
+
+Unter **Statistik → Jahresziele** kann jede Medienart pro Jahr ein eigenes Ziel erhalten. Der Fortschritt zählt abgeschlossene Titel mit dem gewählten Abschlussjahr. Eine leere Eingabe entfernt das Ziel.
+
+### Barcode, IMDb und Trailer
+
+Beim Hinzufügen eines Titels liest **ISBN oder Barcode scannen** EAN- und UPC-Codes per Webcam oder von einem Foto. Eine manuelle Eingabe ist ebenfalls möglich. Die Bilder werden lokal verarbeitet. ISBNs von Büchern gehen in die Buchsuche, Produktbarcodes werden bei UPCitemdb nachgeschlagen. Die Ergebnisse müssen vor der Übernahme ausgewählt werden.
+
+Filmkarten und Filmcharts zeigen die verfügbare IMDb-Wertung auf einer Skala bis 10. In der Detailansicht gespeicherter Filme lässt sich ein verfügbarer Trailer ansehen oder ein eigener YouTube-Link speichern.
+
+### Land und Sprache
+
+**Settings → App language** bietet Deutsch, Englisch und vereinfachtes Chinesisch. **Settings** bleibt auf Englisch. Externe Kataloge und selbst eingetragene Inhalte liefern ihren eigenen Text. Die App fragt lokalisierte Metadaten dort ab, wo der Anbieter sie unterstützt.
+
+**Settings → Country for streaming and charts** legt das Land für Streamingangebote und Charts fest. Film- und Seriencharts nutzen bei verfügbarem TMDB-Zugang den Streamingmarkt und sonst Produktionen des gewählten Landes. Bücher werden in Open Library nach der zugeordneten Hauptsprache des Landes gefiltert, und Spiele verwenden den regionalen Steam-Shop. Die Quelle und der jeweilige Filter stehen an der Rangliste.

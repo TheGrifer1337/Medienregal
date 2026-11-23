@@ -21,21 +21,21 @@ function collectionTools() {
     return control;
   };
   lists.replaceChildren(
-    quickFilter('Alle Listen',!state.list,()=>{ state.list='';render(); }),
+    quickFilter(tr('Alle Listen'),!state.list,()=>{ state.list='';render(); }),
     ...state.lists.map(name=>quickFilter(name,state.list===name,()=>{state.list=name;render();}))
   );
   const favorite=$('favorites-filter');
   favorite.setAttribute('aria-pressed',String(state.onlyFavorites));
   $('view').value=state.view;
   $('undo-collection').disabled=!state.undo;
-  $('undo-collection').title=state.undo?'Rückgängig: '+state.undo:'';
+  $('undo-collection').title=state.undo?tr('Rückgängig: ')+tr(state.undo):'';
 }
 
 function listPicker(item) {
   const panel=text('details',null,'genre-picker');
-  const summary=text('summary','Eigene Listen');
+  const summary=text('summary',tr('Eigene Listen'));
   panel.append(summary);
-  if (!state.lists.length) panel.append(text('p','Lege über „Neue Liste“ in der Übersicht eine Liste an.','form-note'));
+  if (!state.lists.length) panel.append(text('p',tr('Lege über „Neue Liste“ in der Übersicht eine Liste an.'),'form-note'));
   const checks=state.lists.map(name=>{
     const check=input('checkbox','list',name);
     check.checked=item.lists?.includes(name)||false;
@@ -43,22 +43,22 @@ function listPicker(item) {
     return check;
   });
   const chosen=()=>checks.filter(check=>check.checked).map(check=>check.value);
-  function paint() { summary.textContent=chosen().length?'Eigene Listen · '+chosen().join(', '):'Eigene Listen'; }
+  function paint() { summary.textContent=chosen().length?tr('Eigene Listen · ')+chosen().join(', '):tr('Eigene Listen'); }
   panel.addEventListener('change',paint);
   paint();
   return {panel,chosen};
 }
 
 function newCollectionList() {
-  const inner=show('Neue Liste');
+  const inner=show(tr('Neue Liste'));
   const form=text('form',null,'settings-form');
   const name=input('text','name');
   name.required=true;name.maxLength=100;
-  const submit=text('button','Liste anlegen','accent');
+  const submit=text('button',tr('Liste anlegen'),'accent');
   submit.type='submit';
   const message=text('p',null,'error form-error');
   message.setAttribute('role','alert');
-  form.append(field('Listenname',name),message,submit);
+  form.append(field(tr('Listenname'),name),message,submit);
   inner.append(form);
   name.focus();
   form.addEventListener('submit',async event=>{
@@ -67,7 +67,7 @@ function newCollectionList() {
     try {
       const data=await api('lists','PUT',{name:name.value});
       acceptCollection(data);
-      $('notice').textContent='Liste angelegt. Titel kannst du in ihrer Detailansicht zuordnen.';
+      $('notice').textContent=tr('Liste angelegt. Titel kannst du in ihrer Detailansicht zuordnen.');
       modal.close();render();
     } catch(e) { message.textContent=e.message; }
     finally { submit.disabled=false; }
@@ -79,7 +79,7 @@ async function undoLastCollectionChange() {
   try {
     acceptCollection(await api('collection/undo','POST',{}));
     render();
-    $('notice').textContent=action+' · rückgängig gemacht';
+    $('notice').textContent=tr(action)+tr(' · rückgängig gemacht');
   } catch(e) { $('notice').textContent=e.message; }
 }
 
@@ -112,9 +112,9 @@ function matchingPairs(items) {
 }
 
 function openDuplicates() {
-  const inner=show('Doppelte Titel zusammenführen');
+  const inner=show(tr('Doppelte Titel zusammenführen'));
   const items=state.entries.filter(item=>item.kind===state.kind).sort((a,b)=>collator.compare(a.title,b.title));
-  if (items.length<2) { inner.append(text('p','Speichere mindestens zwei Titel in diesem Bereich.','form-note'));return; }
+  if (items.length<2) { inner.append(text('p',tr('Speichere mindestens zwei Titel in diesem Bereich.'),'form-note'));return; }
   const byID=new Map(items.map(item=>[item.id,item]));
   const form=text('form',null,'settings-form');
   const keep=document.createElement('select');
@@ -122,18 +122,18 @@ function openDuplicates() {
   const pairs=matchingPairs(items);
   const suggestion=document.createElement('select');
   const label=item=>[item.title,item.subtitle].filter(Boolean).join(' · ');
-  suggestion.append(option('','Vorschlag wählen'),...pairs.map(([a,b],i)=>option(String(i),label(a)+' ↔ '+label(b))));
-  for(const [select,hint] of [[keep,'Titel auswählen'],[remove,'Duplikat auswählen']]) {
+  suggestion.append(option('',tr('Vorschlag wählen')),...pairs.map(([a,b],i)=>option(String(i),label(a)+' ↔ '+label(b))));
+  for(const [select,hint] of [[keep,tr('Titel auswählen')],[remove,tr('Duplikat auswählen')]]) {
     select.append(option('',hint),...items.map(item=>option(item.id,label(item))));
   }
   const sourceFields=[
-    ['ratings','Bewertungen',item=>average(item)===null?'Ohne Gesamtbewertung':number.format(average(item))+' / 5'],
-    ['progress','Fortschritt',item=>item.progress+(item.total?' / '+item.total:'')],
-    ['status','Status',item=>definitions[item.kind].states[item.status]]
+    ['ratings',tr('Bewertungen'),item=>average(item)===null?tr('Ohne Gesamtbewertung'):number.format(average(item))+' / 5'],
+    ['progress',tr('Fortschritt'),item=>item.progress+(item.total?' / '+item.total:'')],
+    ['status',tr('Status'),item=>localizedDefinition(item.kind).states[item.status]]
   ];
   const choices=sourceFields.map(([name,label,summary])=>({name,label,summary,select:document.createElement('select')}));
   const picker=text('div',null,'settings-form');
-  const save=text('button','Zusammenführen','accent');
+  const save=text('button',tr('Zusammenführen'),'accent');
   save.type='submit';
   const error=text('p',null,'error form-error');
   error.setAttribute('role','alert');
@@ -152,10 +152,10 @@ function openDuplicates() {
   });
   keep.addEventListener('change',sync);
   remove.addEventListener('change',sync);
-  if (pairs.length) form.append(field('Mögliche Duplikate',suggestion));
-  form.append(field('Diesen Titel behalten',keep),field('Diesen Titel damit verbinden',remove));
-  for(const choice of choices) picker.append(field(choice.label+' übernehmen von',choice.select));
-  form.append(picker,text('p','Genres, Listen und persönliche Notizen werden zusammengeführt.','form-note'),error,save);
+  if (pairs.length) form.append(field(tr('Mögliche Duplikate'),suggestion));
+  form.append(field(tr('Diesen Titel behalten'),keep),field(tr('Diesen Titel damit verbinden'),remove));
+  for(const choice of choices) picker.append(field(choice.label+tr(' übernehmen von'),choice.select));
+  form.append(picker,text('p',tr('Genres, Listen und persönliche Notizen werden zusammengeführt.'),'form-note'),error,save);
   inner.append(form);sync();
   form.addEventListener('submit',async event=>{
     event.preventDefault();
@@ -165,7 +165,7 @@ function openDuplicates() {
         keep:keep.value,remove:remove.value,...Object.fromEntries(choices.map(choice=>[choice.name,choice.select.value]))
       }));
       modal.close();render();
-      $('notice').textContent='Titel zusammengeführt.';
+      $('notice').textContent=tr('Titel zusammengeführt.');
     } catch(e) { error.textContent=e.message;save.disabled=false; }
   });
 }
@@ -173,18 +173,18 @@ function openDuplicates() {
 function collectionStatistics() {
   const panel=$('statistics');
   const year=document.createElement('select');
-  year.setAttribute('aria-label','Statistikjahr');
-  const known=[...new Set([new Date().getFullYear(),...state.entries.filter(completeStatus).map(item=>item.completedYear).filter(Boolean)])].sort((a,b)=>b-a);
-  year.append(option('','Alle Jahre'),...known.map(value=>option(String(value),String(value))));
+  year.setAttribute('aria-label',tr('Statistikjahr'));
+  const known=[...new Set([new Date().getFullYear(),...Object.keys(state.goals||{}).map(Number),...state.entries.filter(completeStatus).map(item=>item.completedYear).filter(Boolean)])].sort((a,b)=>b-a);
+  year.append(option('',tr('Alle Jahre')),...known.map(value=>option(String(value),String(value))));
   year.value=state.statsYear||'';
   year.addEventListener('change',()=>{ state.statsYear=year.value;collectionStatistics(); });
   const title=text('div',null,'stats-title');
-  title.append(text('h1','Statistik'),year);
+  title.append(text('h1',tr('Statistik')),year);
   const completed=state.entries.filter(item=>completeStatus(item)&&(!year.value||Number(year.value)===item.completedYear));
   const counts=text('div',null,'stats-counts');
   for(const [kind,definition] of Object.entries(definitions)) {
     const tile=text('div',null,'stat-tile');
-    tile.append(text('strong',completed.filter(item=>item.kind===kind).length),text('span',definition.title+' abgeschlossen'));
+    tile.append(text('strong',completed.filter(item=>item.kind===kind).length),text('span',tr(definition.title)+tr(' abgeschlossen')));
     counts.append(tile);
   }
   const undated=state.entries.filter(item=>completeStatus(item)&&!item.completedYear).length;
@@ -194,23 +194,24 @@ function collectionStatistics() {
   for(const item of completed) {
     for(const genre of genreLabels(item.kind,item.genres||[])) genres.set(genre,(genres.get(genre)||0)+1);
   }
-  genrePanel.append(text('h2','Häufigste Genres'));
+  genrePanel.append(text('h2',tr('Häufigste Genres')));
   const popular=text('ul');
   for(const [genre,count] of [...genres].sort((a,b)=>b[1]-a[1]||collator.compare(a[0],b[0])).slice(0,8)) {
-    const row=text('li');row.append(text('span',genre),text('strong',count));popular.append(row);
+    const row=text('li');row.append(text('span',tr(genre)),text('strong',count));popular.append(row);
   }
-  genrePanel.append(popular.children.length?popular:text('p','Keine Genres für diesen Zeitraum.','form-note'));
+  genrePanel.append(popular.children.length?popular:text('p',tr('Keine Genres für diesen Zeitraum.'),'form-note'));
   const ratedPanel=text('section',null,'stat-tile');
-  ratedPanel.append(text('h2','Beste Bewertungen'));
+  ratedPanel.append(text('h2',tr('Beste Bewertungen')));
   const top=text('ul');
   const rated=(year.value?completed:state.entries).filter(item=>average(item)!==null).sort((a,b)=>average(b)-average(a)||collator.compare(a.title,b.title)).slice(0,8);
   for (const item of rated) {
     const row=text('li');row.append(button(item.title,()=>openEditor(item),'quiet'),text('strong','★ '+number.format(average(item))));top.append(row);
   }
-  ratedPanel.append(top.children.length?top:text('p','Keine vollständigen Bewertungen für diesen Zeitraum.','form-note'));
+  ratedPanel.append(top.children.length?top:text('p',tr('Keine vollständigen Bewertungen für diesen Zeitraum.'),'form-note'));
   sections.append(genrePanel,ratedPanel);
-  panel.replaceChildren(title,counts);
-  if (undated) panel.append(text('p',undated+' ältere Abschlüsse ohne Datum sind in „Alle Jahre“ enthalten.','form-note'));
+  const goalYear=Number(year.value)||new Date().getFullYear();
+  panel.replaceChildren(title,yearGoals(goalYear,state.entries.filter(item=>completeStatus(item)&&item.completedYear===goalYear)),counts);
+  if (undated) panel.append(text('p',undated+tr(' ältere Abschlüsse ohne Datum sind in „Alle Jahre“ enthalten.'),'form-note'));
   panel.append(sections);
 }
 
@@ -229,7 +230,7 @@ function favoriteButton(item) {
     }
   },'favorite-toggle');
   control.dataset.entryId=item.id;
-  control.title=item.favorite?'Aus Favoriten entfernen':'Zu Favoriten hinzufügen';
+  control.title=item.favorite?tr('Aus Favoriten entfernen'):tr('Zu Favoriten hinzufügen');
   control.setAttribute('aria-label',control.title+': '+item.title);
   control.setAttribute('aria-pressed',String(Boolean(item.favorite)));
   return control;

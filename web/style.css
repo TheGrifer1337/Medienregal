@@ -233,3 +233,16 @@ body[data-category=game] .series-scene{opacity:.88;transform:none}
 
 .launcher-rows .history-row .chip{flex:none}
 #launcher-import{background:#161329e8;border-color:#74849c;color:#e7eef9;margin:.22rem 0}
+
+.imdb-badge {display:inline-block;color:#f6ce69;font-weight:650;font-size:.78rem}
+.chart-caption .imdb-badge {font-size:.68rem}
+.playback-action {display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;margin-top:.4rem}
+.media-overview {display:grid;gap:.65rem;padding-left:1.4rem}
+.media-overview li {padding:.4rem 0}
+.media-overview li>* {margin-right:.6rem}
+.goal-fields {display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.7rem}
+.goal-fields label {display:grid;gap:.3rem;min-width:0}
+.goal-fields progress {width:100%;accent-color:#c5a163}
+.media-extra {margin:.5rem 0}
+.barcode-preview {width:min(100%,480px);margin:.5rem 0;border-radius:8px}
+.movie-trailer-player:not(:empty) {margin-top:.7rem}

@@ -13,6 +13,8 @@ import (
 )
 
 type annualChart struct {
+	Region string  `json:"region,omitempty"`
+	Scope  string  `json:"scope,omitempty"`
 	Year   int     `json:"year"`
 	Source string  `json:"source"`
 	Items  []entry `json:"items"`
@@ -37,12 +39,16 @@ func (a *app) rankings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year := time.Now().Year()
-	token := a.getSettings().TMDB
+	prefs := a.getSettings()
+	region := prefs.Region
+	if region == "" {
+		region = "DE"
+	}
 	key := struct {
-		kind, genre string
-		year        int
-		token       string
-	}{kind, genre, year, token}
+		kind, genre, region, language string
+		year                          int
+		token                         string
+	}{kind, genre, region, prefs.locale(), year, prefs.TMDB}
 	if val, ok := annualCharts.Load(key); ok {
 		cached := val.(chartCache)
 		if time.Now().Before(cached.Until) {
@@ -50,7 +56,9 @@ func (a *app) rankings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	chart, err := loadChart(r.Context(), kind, year, token, genre)
+	ctx, cancel := context.WithTimeout(r.Context(), 22*time.Second)
+	defer cancel()
+	chart, err := regionalChart(ctx, kind, year, prefs, genre, region)
 	if err != nil {
 		fail(w, 502, "Die Jahresliste ist gerade nicht verfügbar.")
 		return
@@ -59,62 +67,74 @@ func (a *app) rankings(w http.ResponseWriter, r *http.Request) {
 	reply(w, 200, chart)
 }
 
-func loadChart(ctx context.Context, kind string, year int, token, genre string) (annualChart, error) {
+func regionalChart(ctx context.Context, kind string, year int, prefs settings, genre, region string) (annualChart, error) {
 	if kind == "book" {
-		return bookChart(ctx, year, genre)
+		return bookChart(ctx, year, genre, region)
 	}
 	if kind == "game" {
-		chart, err := wikidataChart(ctx, kind, year, genre)
-		if err == nil && len(chart.Items) == 50 {
-			return chart, nil
-		}
-		fallback, fallbackErr := steamChart(ctx, year, genre)
-		if fallbackErr == nil && (err != nil || len(fallback.Items) > len(chart.Items)) {
-			return fallback, nil
-		}
-		return chart, err
+		return steamChart(ctx, year, genre, region)
 	}
-	if token != "" && (genre == "" || chartGenres[kind][genre].tmdb != "") {
-		if chart, err := tmdbChart(ctx, kind, year, token, genre); err == nil && len(chart.Items) > 0 {
+	if prefs.TMDB != "" && (genre == "" || chartGenres[kind][genre].tmdb != "") {
+		tmdbContext, cancel := context.WithTimeout(ctx, 7*time.Second)
+		chart, err := tmdbChart(tmdbContext, kind, year, prefs.TMDB, genre, region, prefs.tmdbLocale())
+		cancel()
+		if len(chart.Items) > 0 || (err == nil && ctx.Err() != nil) {
 			return chart, nil
 		}
 	}
-	if genre != "" {
-		result, err := wikidataChart(ctx, kind, year, genre)
-		if err == nil && len(result.Items) == 50 {
-			return result, nil
-		}
-		if other, otherErr := cinemetaChart(ctx, kind, year, genre); otherErr == nil && (err != nil || len(other.Items) > len(result.Items)) {
-			result, err = other, nil
-			if len(result.Items) == 50 {
-				return result, nil
-			}
-		}
-		if other, otherErr := imdbChart(ctx, kind, year, genre); otherErr == nil && (err != nil || len(other.Items) > len(result.Items)) {
-			return other, nil
-		}
-		return result, err
-	}
-	result, err := cinemetaChart(ctx, kind, year, "")
-	if err == nil && len(result.Items) == 50 {
+	apiContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+	result, err := imdbChart(apiContext, kind, year, genre, region)
+	cancel()
+	if len(result.Items) > 0 {
 		return result, nil
 	}
-	fallback, fallbackErr := wikidataChart(ctx, kind, year, "")
-	if fallbackErr == nil && len(fallback.Items) > len(result.Items) {
+	fallback, fallbackErr := cinemetaChart(ctx, kind, year, genre, region)
+	if len(fallback.Items) > 0 || fallbackErr == nil {
 		return fallback, nil
 	}
-	if len(result.Items) == 0 {
-		if fallback, fallbackErr = imdbChart(ctx, kind, year, ""); fallbackErr == nil && len(fallback.Items) > 0 {
-			return fallback, nil
-		}
+	if err == nil {
+		return result, nil
 	}
-	return result, err
+	return fallback, fallbackErr
 }
 
-func bookChart(ctx context.Context, year int, genre string) (annualChart, error) {
+var marketBookLanguage = map[string]string{
+	"DE": "ger", "AT": "ger", "CH": "ger", "US": "eng", "GB": "eng", "CA": "eng", "AU": "eng",
+	"CN": "chi", "TW": "chi", "HK": "chi", "JP": "jpn", "KR": "kor", "FR": "fre", "ES": "spa",
+	"MX": "spa", "IT": "ita", "BR": "por", "PT": "por", "NL": "dut", "PL": "pol", "SE": "swe",
+}
+
+var marketNames = map[string][]string{
+	"DE": {"Germany", "West Germany", "East Germany"}, "AT": {"Austria"}, "CH": {"Switzerland"},
+	"US": {"USA", "United States", "United States of America"}, "GB": {"UK", "United Kingdom"},
+	"CA": {"Canada"}, "AU": {"Australia"}, "CN": {"China", "Mainland China"}, "TW": {"Taiwan"},
+	"HK": {"Hong Kong"}, "JP": {"Japan"}, "KR": {"South Korea", "Korea, South"}, "FR": {"France"},
+	"ES": {"Spain"}, "MX": {"Mexico"}, "IT": {"Italy"}, "BR": {"Brazil"}, "PT": {"Portugal"},
+	"NL": {"Netherlands", "The Netherlands"}, "PL": {"Poland"}, "SE": {"Sweden"},
+}
+
+func chartCountry(country, region string) bool {
+	for _, code := range strings.Split(country, ",") {
+		if strings.EqualFold(strings.TrimSpace(code), region) {
+			return true
+		}
+	}
+	for _, name := range marketNames[region] {
+		if strings.Contains(","+strings.ReplaceAll(strings.ToLower(country), ", ", ",")+",", ","+strings.ToLower(name)+",") {
+			return true
+		}
+	}
+	return false
+}
+
+func bookChart(ctx context.Context, year int, genre, region string) (annualChart, error) {
 	query := "first_publish_year:" + strconv.Itoa(year)
 	if genre != "" {
 		query += " AND subject:" + strconv.Quote(chartGenres["book"][genre].term)
+	}
+	language := marketBookLanguage[region]
+	if language != "" {
+		query += " AND language:" + language
 	}
 	params := "q=" + url.QueryEscape(query) + "&sort=readinglog&limit=50&fields=key,title,author_name,cover_i,readinglog_count,first_publish_year"
 	var payload struct {
@@ -126,7 +146,10 @@ func bookChart(ctx context.Context, year int, genre string) (annualChart, error)
 			Subjects   []string `json:"subject"`
 		}
 	}
-	chart := annualChart{Year: year, Source: "Open Library · Leselisten", Items: []entry{}}
+	chart := annualChart{Year: year, Source: "Open Library", Region: region, Scope: "book-language", Items: []entry{}}
+	if language == "" {
+		chart.Scope = "book-global"
+	}
 	err := getJSON(ctx, "https://openlibrary.org/search.json?"+params, "", &payload)
 	for _, book := range payload.Docs {
 		if !openLibraryWork.MatchString(book.Key) || book.Title == "" {
@@ -139,9 +162,9 @@ func bookChart(ctx context.Context, year int, genre string) (annualChart, error)
 	return chart, err
 }
 
-func tmdbChart(ctx context.Context, kind string, year int, token, genre string) (annualChart, error) {
-	chart := annualChart{Year: year, Source: "TMDB · Beliebtheit", Items: []entry{}}
-	q := url.Values{"language": {"de-DE"}, "sort_by": {"popularity.desc"}, "include_adult": {"false"}}
+func tmdbChart(ctx context.Context, kind string, year int, token, genre, region, language string) (annualChart, error) {
+	chart := annualChart{Year: year, Source: "TMDB", Region: region, Scope: "streaming-market", Items: []entry{}}
+	q := url.Values{"language": {language}, "sort_by": {"popularity.desc"}, "include_adult": {"false"}, "watch_region": {region}, "with_watch_monetization_types": {"flatrate|free|ads|rent|buy"}}
 	if kind == "movie" {
 		q.Set("primary_release_year", strconv.Itoa(year))
 		q.Set("primary_release_date.lte", time.Now().Format("2006-01-02"))
@@ -184,13 +207,12 @@ func tmdbChart(ctx context.Context, kind string, year int, token, genre string) 
 	return chart, nil
 }
 
-func cinemetaChart(ctx context.Context, kind string, year int, genre string) (annualChart, error) {
-	chart := annualChart{Year: year, Source: "Cinemeta · Jahreskatalog", Items: []entry{}}
-	catalog, maxOffset := "year", 100
+func cinemetaChart(ctx context.Context, kind string, year int, genre, region string) (annualChart, error) {
+	chart := annualChart{Year: year, Source: "Cinemeta", Region: region, Scope: "production-country", Items: []entry{}}
+	catalog, maxOffset := "year", 400
 	yearLabel := strconv.Itoa(year)
 	if genre != "" {
 		catalog, maxOffset = "top", 400
-		chart.Source = "Cinemeta · Beliebtheit"
 	}
 	seen := map[string]bool{}
 	for offset := 0; offset < maxOffset && len(chart.Items) < 50; {
@@ -215,7 +237,7 @@ func cinemetaChart(ctx context.Context, kind string, year int, genre string) (an
 			}
 			seen[title.ID] = true
 			newTitles++
-			if genre != "" && !strings.HasPrefix(title.ReleaseInfo, yearLabel) {
+			if !chartCountry(title.Country, region) || (genre != "" && !strings.HasPrefix(title.ReleaseInfo, yearLabel)) {
 				continue
 			}
 			item := title.internal(kind)
@@ -235,81 +257,10 @@ func cinemetaChart(ctx context.Context, kind string, year int, genre string) (an
 	return chart, nil
 }
 
-func wikidataChart(ctx context.Context, kind string, year int, genre string) (annualChart, error) {
-	chart := annualChart{Year: year, Source: "Wikidata · verknüpfte Artikel", Items: []entry{}}
-	classes, identifier := "wd:Q11424", "?item wdt:P345 ?catalog ."
-	dateProperties := "wdt:P577"
-	if kind == "series" {
-		classes = "wd:Q5398426 wd:Q1259759"
-		dateProperties = "wdt:P577 wdt:P580"
-	}
-	if kind == "game" {
-		classes = "wd:Q7889"
-		identifier = "OPTIONAL { ?item wdt:P1733 ?steam . }"
-	}
-	filter := ""
-	if criterion := chartGenres[kind][genre]; genre != "" {
-		if criterion.wikidata == "" {
-			return chart, fmt.Errorf("Genre bei Wikidata nicht verfügbar")
-		}
-		filter = "VALUES ?genre { " + criterion.wikidata + " } ?item wdt:P136 ?genre ."
-	}
-	query := fmt.Sprintf(`SELECT DISTINCT ?item ?catalog ?steam ?title ?links WHERE {
-      VALUES ?class { %s }
-      VALUES ?dateProperty { %s }
-      ?item wdt:P31 ?class; ?dateProperty ?date; wikibase:sitelinks ?links .
-      FILTER("%d-01-01T00:00:00Z"^^xsd:dateTime <= ?date && ?date <= "%sT23:59:59Z"^^xsd:dateTime)
-      FILTER NOT EXISTS { ?item ?dateProperty ?earlier . FILTER(?earlier < "%d-01-01T00:00:00Z"^^xsd:dateTime) }
-      %s %s
-      ?item rdfs:label ?title FILTER(LANG(?title)="en")
-    } ORDER BY DESC(?links) LIMIT 80`, classes, dateProperties, year, time.Now().Format("2006-01-02"), year, identifier, filter)
-	params := url.Values{"query": {query}, "format": {"json"}}
-	var payload struct {
-		Results struct {
-			Bindings []struct{ Item, Catalog, Steam, Title struct{ Value string } }
-		}
-	}
-	err := getJSON(ctx, "https://query.wikidata.org/sparql?"+params.Encode(), "", &payload)
-	seen := map[string]bool{}
-	for _, value := range payload.Results.Bindings {
-		id, title, cover := value.Catalog.Value, value.Title.Value, ""
-		if kind == "game" {
-			qid := strings.TrimPrefix(strings.TrimPrefix(value.Item.Value, "http://www.wikidata.org/entity/"), "https://www.wikidata.org/entity/")
-			if !wikidataID.MatchString(qid) {
-				continue
-			}
-			id = "game:wikidata:" + qid
-			if steam := value.Steam.Value; numericID.MatchString(steam) {
-				id = "game:steam:" + steam
-				cover = "https://cdn.cloudflare.steamstatic.com/steam/apps/" + steam + "/header.jpg"
-			}
-		} else {
-			if !imdbID.MatchString(id) {
-				continue
-			}
-			cover = "https://images.metahub.space/poster/small/" + id + "/img"
-			id = kind + ":imdb:" + id
-		}
-		if title == "" || seen[id] {
-			continue
-		}
-		seen[id] = true
-		var genres []string
-		if genre != "" {
-			genres = []string{genre}
-		}
-		chart.Items = append(chart.Items, entry{ID: id, Kind: kind, Title: title, Subtitle: strconv.Itoa(year), Cover: cover, Source: "Wikidata", Genres: genres})
-		if len(chart.Items) == 50 {
-			break
-		}
-	}
-	return chart, err
-}
-
-func imdbChart(ctx context.Context, kind string, year int, genre string) (annualChart, error) {
-	chart := annualChart{Year: year, Source: "IMDbAPI · Beliebtheit", Items: []entry{}}
+func imdbChart(ctx context.Context, kind string, year int, genre, region string) (annualChart, error) {
+	chart := annualChart{Year: year, Source: "IMDbAPI", Region: region, Scope: "production-country", Items: []entry{}}
 	yearText := strconv.Itoa(year)
-	params := url.Values{"startYear": {yearText}, "endYear": {yearText}, "limit": {"50"}, "sortBy": {"SORT_BY_POPULARITY"}, "sortOrder": {"ASC"}}
+	params := url.Values{"startYear": {yearText}, "endYear": {yearText}, "limit": {"50"}, "sortBy": {"SORT_BY_POPULARITY"}, "sortOrder": {"ASC"}, "countryCodes": {region}}
 	if kind == "series" {
 		params["types"] = []string{"TV_SERIES", "TV_MINI_SERIES"}
 	} else {
@@ -325,6 +276,8 @@ func imdbChart(ctx context.Context, kind string, year int, genre string) (annual
 			IsAdult                               bool
 			Genres                                []string
 			PrimaryImage                          struct{ URL string }
+			Rating                                struct{ AggregateRating float64 }
+			OriginCountries                       []struct{ Code string }
 		}
 	}
 	err := getJSON(ctx, "https://api.imdbapi.dev/titles?"+params.Encode(), "", &payload)
@@ -333,8 +286,24 @@ func imdbChart(ctx context.Context, kind string, year int, genre string) (annual
 		if title.IsAdult || title.StartYear != year || title.PrimaryTitle == "" || !imdbID.MatchString(title.ID) || seen[title.ID] {
 			continue
 		}
+		if len(title.OriginCountries) > 0 {
+			matched := false
+			for _, country := range title.OriginCountries {
+				if country.Code == region {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+		}
+		score := 0.0
+		if kind == "movie" && title.Rating.AggregateRating >= 1 && title.Rating.AggregateRating <= 10 {
+			score = title.Rating.AggregateRating
+		}
 		seen[title.ID] = true
-		chart.Items = append(chart.Items, entry{ID: kind + ":imdb:" + title.ID, Kind: kind, Title: title.PrimaryTitle, Subtitle: yearText,
+		chart.Items = append(chart.Items, entry{IMDb: score, ID: kind + ":imdb:" + title.ID, Kind: kind, Title: title.PrimaryTitle, Subtitle: yearText,
 			Cover: title.PrimaryImage.URL, Description: limitDescription(title.Plot), Genres: prettyGenres(title.Genres), Source: "IMDbAPI", Aliases: mergeLabels(nil, []string{title.OriginalTitle})})
 		if len(chart.Items) == 50 {
 			break
