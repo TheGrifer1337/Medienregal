@@ -71,3 +71,31 @@ Filmkarten und Filmcharts zeigen die verfügbare IMDb-Wertung auf einer Skala bi
 **Settings → App language** bietet Deutsch, Englisch und vereinfachtes Chinesisch. **Settings** bleibt auf Englisch. Externe Kataloge und selbst eingetragene Inhalte liefern ihren eigenen Text. Die App fragt lokalisierte Metadaten dort ab, wo der Anbieter sie unterstützt.
 
 **Settings → Country for streaming and charts** legt das Land für Streamingangebote und Charts fest. Film- und Seriencharts nutzen bei verfügbarem TMDB-Zugang den Streamingmarkt und sonst Produktionen des gewählten Landes. Bücher werden in Open Library nach der zugeordneten Hauptsprache des Landes gefiltert, und Spiele verwenden den regionalen Steam-Shop. Die Quelle und der jeweilige Filter stehen an der Rangliste.
+
+## iPhone und Kontoserver
+
+Windows und iPhone öffnen im Kontomodus dieselbe Sammlung auf deinem Kontoserver. Änderungen werden beim Speichern zentral übernommen. Ein geöffnetes Regal lädt Änderungen etwa alle 20 Sekunden oder beim Zurückwechseln zur App. Die bestehende lokale Windows-Sammlung ist weiterhin über **Konto → Abmelden** erreichbar. Konto und lokale Sammlung werden getrennt geführt.
+
+### Windows einrichten
+
+1. Öffne **Konto → Kontoserver auf diesem PC starten**. Der Server läuft im Hintergrund der Windows-App unter `http://127.0.0.1:8765` und startet beim nächsten Öffnen der App wieder. Der Einladungscode wird im Kontodialog angezeigt.
+2. Wähle **Konto erstellen**, trage einen Benutzernamen und ein Passwort mit mindestens 10 Zeichen ein. Wenn du deine bisherigen Filme, Serien, Bücher und Spiele mitnehmen möchtest, aktiviere **Meine lokale Sammlung in ein leeres Konto kopieren**. Dazu gehören auch Listen und Jahresziele. API-Schlüssel werden nicht kopiert.
+3. Installiere [Tailscale](https://tailscale.com/download) auf dem Windows-PC und dem iPhone und verbinde beide mit demselben Tailscale-Netz. Starte auf dem PC in PowerShell:
+
+   ```powershell
+   tailscale serve --bg http://127.0.0.1:8765
+   ```
+
+   Falls Tailscale zum Aktivieren seiner HTTPS-Funktion auffordert, öffne den von Tailscale ausgegebenen Link. Die Ausgabe von `tailscale serve status` zeigt anschließend die private HTTPS-Adresse des PCs. Tailscale Serve gibt sie für dein Tailscale-Netz frei.
+
+### iPhone einrichten
+
+Öffne die oben ausgegebene **HTTPS-Adresse** in Safari und melde dich mit demselben **Mediathek**-Konto an. Über **Teilen → Zum Home-Bildschirm → Als Web-App öffnen** erhält die Mediathek ein eigenes Symbol. Das iPhone benötigt eine Verbindung zum Kontoserver. Solange der Windows-PC den Server betreibt, müssen der PC und die Mediathek erreichbar sein.
+
+Wenn der PC keinen dauerhaften Server betreiben soll, kann ein dauerhaft verfügbarer Rechner dieselbe Go-Anwendung mit `-account-host -data /pfad/zu/konten` starten. Der Kontoserver bindet an den Loopback-Port 8765. Für Verbindungen von anderen Geräten stelle eine HTTPS-Adresse über einen vertrauenswürdigen Reverse Proxy oder über Tailscale Serve bereit. Die Daten des integrierten Windows-Servers liegen unter `%APPDATA%\Medienregal\Kontoserver`. Das Passwort wird als gesalzener Hash gespeichert.
+
+### Entdecken, Steam und Export
+
+Der Bereich **Für dich entdeckt** am Rand nutzt Favoriten, Bewertungen, Genres und bei Büchern auch Autorennamen. **Settings** nimmt SteamID64 und einen persönlichen Steam-Web-API-Schlüssel entgegen. Für zugängliche Steam-Spiele zeigt die Mediathek Spielzeit und, sofern von Steam geliefert, den letzten Spieltermin. Vor dem Öffnen der Wiedergabe oder dem Spielstart werden verfügbare landesspezifische Altersfreigaben und Links zu Inhaltswarnungen angezeigt. Bei Filmwertungen wird die eigene 5-Punkte-Wertung für den Abweichungsfilter auf 10 Punkte umgerechnet.
+
+**Liste exportieren** erstellt eine HTML-Datei mit Titel, Cover und eigener Wertung. Eingebettete eigene Cover stehen direkt in der Datei, andere Cover werden über ihre Bildadresse geladen. Der Export enthält keine Notizen, Zugangsdaten oder Leihdaten.

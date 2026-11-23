@@ -122,29 +122,38 @@ function movieTrailerPanel(item) {
 
 function playbackAction(item) {
   if (!isScreen(item) && item.kind!=='game') return null;
-  const error=text('span',null,'error playback-error');
-  const control=button(item.kind==='game'?tr('Spiel starten'):tr('Ansehen'),async()=>{
+  const control=button(item.kind==='game'?(mobileMode()?tr('Spielinfo'):tr('Spiel starten')):tr('Ansehen'),()=>{
+    const inner=show(item.title);
+    const note=advisoryPanel(item);
+    inner.append(note);
     if (isScreen(item)) {
-      const inner=show(item.title);
+      const loading=text('p',tr('Streamingangebote werden geladen …'),'form-note');
+      inner.append(loading);
       if (item.kind==='movie' && !streamQuery(item) && (state.prefs?.hasWatchmode || state.prefs?.hasTmdb)) {
-        const loading=text('p',tr('Streamingangebote werden geladen …'),'form-note');
-        inner.append(loading);
-        const found=await lookupMovieRating(item);
-        if (inner.isConnected && modal.open) {
+        lookupMovieRating(item).then(found=>{
+          if (!inner.isConnected || !modal.open) return;
           const film=/^tt\d+$/.test(found.id||'')?{...item,catalogId:'movie:imdb:'+found.id}:item;
           loading.replaceWith(streamPanel(film));
-        }
-      } else inner.append(streamPanel(item));
+        });
+      } else loading.replaceWith(streamPanel(item));
       return;
     }
-    control.disabled=true;
-    error.textContent='';
-    try { await api('launch-game','POST',{id:catalogID(item),title:item.title}); }
-    catch(e) { error.textContent=e.message; }
-    finally { control.disabled=false; }
+    if (mobileMode()) {
+      const steam=catalogID(item).match(/^game:steam:(\d+)$/)?.[1];
+      if (steam) inner.append(link('https://store.steampowered.com/app/'+steam+'/',tr('Bei Steam ansehen')));
+      return;
+    }
+    const error=text('p',null,'error playback-error');
+    const launch=button(tr('Spiel starten'),async()=>{
+      launch.disabled=true;
+      try { await api('launch-game','POST',{id:catalogID(item),title:item.title}); }
+      catch(e) { error.textContent=e.message; }
+      finally { launch.disabled=false; }
+    },'accent');
+    inner.append(launch,error);
   },'quiet');
   const group=text('div',null,'playback-action');
-  group.append(control,error);
+  group.append(control);
   return group;
 }
 

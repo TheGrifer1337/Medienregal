@@ -115,6 +115,7 @@ async function api(endpoint, method='GET', data) {
     const message=result.error||tr('Die Anfrage konnte nicht abgeschlossen werden.');
     const error=new Error(tr(message));
     error.englishMessage=tr(message,'en');
+    error.status=response.status;
     throw error;
   }
   return result;
@@ -184,8 +185,11 @@ function render() {
   shelf.dataset.view=state.view;
   const info=current();
   const items=state.entries.filter(item=>item.kind===state.kind);
+  paintRecommendations(items);
+  $('rating-gap').hidden=state.kind!=='movie';
+  $('only-rating-gap').checked=state.onlyRatingGap===true;
   $('heading').textContent=info.title;
-  $('launcher-import').hidden=state.kind!=='game';
+  $('launcher-import').hidden=state.kind!=='game'||mobileMode();
   $('count').textContent=items.length+' '+(items.length===1?tr('gespeicherter Titel'):tr('gespeicherte Titel'));
   $('status-filters').replaceChildren(...[['',tr('Alle')],...Object.entries(info.states)].map(([value,label])=>{
     const node=button(label,()=>{ state.status=value; render(); });
@@ -200,6 +204,7 @@ function render() {
   visible.sort(compare);
   const onlyProviders=providerFilter();
   const cards=visible.map(card);
+  if (state.kind==='movie' && state.onlyRatingGap) filterRatingGaps(visible,cards);
   shelf.replaceChildren(...cards);
   if (visible.length) {
     if (onlyProviders) filterWatchCards(visible,cards);
@@ -238,11 +243,14 @@ function card(item) {
   body.append(text('strong',item.title));
   if (item.subtitle) body.append(text('small',item.subtitle));
   const avg=average(item);
-  if (item.kind==='movie') body.append(movieBadge(item));
-  body.append(text('small',avg===null?tr('Ohne Bewertung'):'★ '+number.format(avg)+' / 5',avg===null?'':'score'));
+  const scores=text('span',null,'side-by-side-scores');
+  scores.append(text('small',avg===null?tr('Ohne Bewertung'):'★ '+number.format(avg)+' / 5',avg===null?'':'score'));
+  if (item.kind==='movie') scores.append(movieBadge(item));
+  body.append(scores);
   open.append(cover(item),body);
   const foot=text('div',null,'card-foot');
   foot.append(text('span',current().states[item.status],'chip'));
+  if (item.kind==='game'&&state.prefs?.hasSteam) foot.append(steamPlaytime(item));
   if (item.kind==='game'&&item.source) foot.append(text('small',' · '+item.source,'muted'));
   if (item.status==='started' && current().unit) foot.append(text('small',' · '+item.progress+(item.total?' / '+item.total:'')+' '+current().unit,'muted'));
   if (item.kind==='book' && item.genres?.length) foot.append(text('small',tr(genreLabels(item.kind,item.genres)[0]),'book-genre'));
@@ -348,7 +356,7 @@ function openSearch() {
   inner.append(form,results,button(tr('Manuell hinzufügen'),()=>openEditor({id:'manual:'+crypto.randomUUID(),kind,title:query.value.trim(),ratings:[0,0,0]}),'quiet'));
   inner.append(barcodeControls(inner,form,query,kind));
   if (kind==='movie'||kind==='series') inner.append(button(tr('Streamingverlauf importieren'),openHistory,'quiet search-import'));
-  if (kind==='game') inner.append(button(tr('Installierte Spiele importieren'),openLauncherImport,'quiet search-import'));
+  if (kind==='game'&&!mobileMode()) inner.append(button(tr('Installierte Spiele importieren'),openLauncherImport,'quiet search-import'));
   query.focus();
   form.addEventListener('submit',async event=>{
     event.preventDefault(); submit.disabled=true;
@@ -520,6 +528,7 @@ function openEditor(original) {
   if (trailer) fields.append(movieBadge(item,true),trailer.panel);
   const playback=playbackAction(item);
   if (playback) fields.append(playback);
+  if (item.kind==='game'&&state.prefs?.hasSteam) fields.append(steamPlaytime(item));
   const progress=input('number','progress',item.progress||0);
   const total=input('number','total',item.total||'');
   progress.min='0'; progress.step='1'; total.min='1'; total.step='1';
@@ -550,7 +559,7 @@ function openEditor(original) {
   if (existing) actions.append(button(tr('Entfernen'),async()=>{
     if (!confirm(tr('Diesen Titel aus deinem Regal entfernen?'))) return;
     try {
-      await api('entries','DELETE',{id:item.id});
+      await api('entries','DELETE',{id:item.id,revision:item.revision});
       await refreshCollection();modal.close();
       $('notice').textContent=tr('Titel entfernt. Über „Rückgängig“ kannst du ihn wiederherstellen.');
     } catch(error) { err.textContent=error.message; }
@@ -631,8 +640,8 @@ function openSettings() {
     button('Complete imported titles',()=>openEnrichment(),'quiet'));
   const credit=text('p','TV artwork from ','form-note');
   credit.append(link('https://www.tvmaze.com/','TVmaze'), ' · ',link('https://creativecommons.org/licenses/by-sa/4.0/','CC BY-SA'));
-  inner.append(update.controls,imports,credit);
-  update.refresh();
+  if (!mobileMode()) {inner.append(update.controls);update.refresh();}
+  inner.append(imports,credit);
   const form=text('form',null,'settings-form');
   const providers=providerPicker();
   const region=document.createElement('select');
@@ -656,17 +665,25 @@ function openSettings() {
   form.append(field('TMDB for localized titles and additional providers',tmdb),link('https://www.themoviedb.org/settings/api','Open TMDB API settings'));
   if (state.prefs.hasTmdb) { const label=field('Remove TMDB token',removeTmdb);label.className='check';form.append(label); }
   form.append(text('p','This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming data from Watchmode and JustWatch. Metadata also comes from Cinemeta, the German National Library and Open Library.','form-note'));
+  const steamUser=input('text','steam-user',state.prefs.steamUser||'','SteamID64');
+  steamUser.inputMode='numeric';steamUser.pattern='[0-9]{17}';steamUser.maxLength=17;
+  const steamKey=input('password','steam-key','',state.prefs.hasSteam?'Key saved':'Steam Web API key');
+  steamKey.autocomplete='off';steamKey.maxLength=32;
+  const removeSteam=input('checkbox','remove-steam');
+  form.append(field('SteamID64',steamUser),field('Steam Web API key',steamKey),link('https://steamcommunity.com/dev/apikey','Open Steam Web API key page'));
+  if (state.prefs.hasSteam) form.append(field('Remove Steam key',removeSteam));
   const err=text('p',null,'error form-error');err.setAttribute('role','alert');
   const save=text('button','Save','accent');save.type='submit';
   form.append(err,save);inner.append(form);
   form.addEventListener('submit',async event=>{
     event.preventDefault();save.disabled=true;
     try {
-      await api('settings','PUT',{region:region.value,language:language.value,token:tmdb.value,watchmode:watch.value,remove:removeTmdb.checked,removeWatchmode:removeWatch.checked,providers:providers.selected()});
+      await api('settings','PUT',{region:region.value,language:language.value,token:tmdb.value,watchmode:watch.value,remove:removeTmdb.checked,removeWatchmode:removeWatch.checked,providers:providers.selected(),steamUser:steamUser.value,steamKey:steamKey.value,removeSteam:removeSteam.checked});
       state.prefs=await api('settings');
       state.streamCache.clear();
       charts.clear();ticker.key='';ticker.kind='';
       trailerCache.clear();
+      steamSnapshot=null;
       applyLanguage();
       modal.close();render();
     } catch(error) { err.textContent=error.englishMessage||error.message; }
@@ -707,7 +724,11 @@ $('exit').addEventListener('click',async()=>{
   window.close();
 });
 initChart();
-Promise.all([api('collection'),api('settings'),api('goals')]).then(([data,prefs,goals])=>{
-  acceptCollection(data);state.prefs=prefs;state.goals=goals;state.view=prefs.view||state.view;applyLanguage();render();
-}).catch(error=>{ $('notice').textContent=error.message; });
-setInterval(()=>{ if(!modal.open && !document.hidden) render(); },600000);
+$('account').addEventListener('click',showAccount);
+$('export-list').addEventListener('click',showListExport);
+$('only-rating-gap').addEventListener('change',event=>{state.onlyRatingGap=event.target.checked;render();});
+startLibrary().catch(error=>{ $('notice').textContent=error.message; });
+document.addEventListener('visibilitychange',refreshOnlineLibrary);
+window.addEventListener('focus',refreshOnlineLibrary);
+setInterval(refreshOnlineLibrary,20000);
+setInterval(()=>{ if(state.prefs&&!modal.open&&!document.hidden) render(); },600000);

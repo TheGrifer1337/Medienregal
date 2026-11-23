@@ -107,11 +107,10 @@ func (a *app) historyUndo(w http.ResponseWriter, r *http.Request) {
 	next := a.data
 	next.Entries = entries
 	next.LastHistoryImport = nil
-	if err := writeLibrary(a.path, next); err != nil {
+	if err := a.persist(next); err != nil {
 		fail(w, http.StatusInternalServerError, "Die Sammlung konnte nicht gespeichert werden.")
 		return
 	}
-	a.data = next
 	reply(w, http.StatusOK, struct {
 		undoPreview
 		Entries []entry `json:"entries"`

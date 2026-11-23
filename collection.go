@@ -36,11 +36,10 @@ func (a *app) collection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) saveCollection(w http.ResponseWriter, data library) {
-	if err := writeLibrary(a.path, data); err != nil {
+	if err := a.persist(data); err != nil {
 		fail(w, 500, "Die Sammlung konnte nicht gespeichert werden.")
 		return
 	}
-	a.data = data
 	reply(w, 200, a.collectionState())
 }
 
@@ -115,6 +114,7 @@ func findEntry(entries []entry, id string) *entry {
 }
 
 func equalEntry(a, b entry) bool {
+	a.Revision, b.Revision = "", ""
 	left, _ := json.Marshal(a)
 	right, _ := json.Marshal(b)
 	return bytes.Equal(left, right)

@@ -33,6 +33,7 @@ var assets embed.FS
 
 type entry struct {
 	ID            string     `json:"id"`
+	Revision      string     `json:"revision,omitempty"`
 	Kind          string     `json:"kind"`
 	Title         string     `json:"title"`
 	Subtitle      string     `json:"subtitle,omitempty"`
@@ -61,6 +62,8 @@ type entry struct {
 }
 
 type settings struct {
+	SteamUser string   `json:"steamUser,omitempty"`
+	SteamKey  string   `json:"steamKey,omitempty"`
 	TMDB      string   `json:"tmdb"`
 	Watchmode string   `json:"watchmode"`
 	Language  string   `json:"language,omitempty"`
@@ -79,15 +82,20 @@ type library struct {
 }
 
 type app struct {
-	mu            sync.Mutex
-	path          string
-	data          library
-	token         string
-	exit          chan struct{}
-	update        updateCheck
-	lifetime      context.Context
-	fullscreen    chan bool
-	launcherGames map[string]entry
+	mu             sync.Mutex
+	path           string
+	data           library
+	token          string
+	exit           chan struct{}
+	update         updateCheck
+	lifetime       context.Context
+	fullscreen     chan bool
+	launcherGames  map[string]entry
+	hosted         bool
+	remote         desktopAccount
+	host           *accountHost
+	hostHTTP       *http.Server
+	accountActions sync.Mutex
 }
 
 var statuses = map[string][]string{
@@ -111,6 +119,10 @@ func readLibrary(path string) (library, error) {
 }
 
 func writeLibrary(path string, data library) error {
+	return writeJSON(path, data)
+}
+
+func writeJSON(path string, data any) error {
 	file, err := os.CreateTemp(filepath.Dir(path), "regal-*.tmp")
 	if err != nil {
 		return err
@@ -198,6 +210,10 @@ func (a *app) entries(w http.ResponseWriter, r *http.Request) {
 		next := a.data
 		previous := findEntry(next.Entries, item.ID)
 		if previous != nil {
+			if a.hosted && previous.Revision != item.Revision {
+				fail(w, 409, "Dieser Titel wurde auf einem anderen Gerät geändert. Öffne ihn erneut.")
+				return
+			}
 			next.Entries = replaceEntries(next.Entries, []entry{*previous}, nil)
 			next.Undo = &collectionUndo{Before: []entry{*previous}, Label: "Titel entfernt"}
 		}
@@ -206,10 +222,18 @@ func (a *app) entries(w http.ResponseWriter, r *http.Request) {
 	}
 	next := a.data
 	previous := findEntry(next.Entries, item.ID)
+	if a.hosted && previous == nil && item.Revision != "" {
+		fail(w, 409, "Dieser Titel wurde auf einem anderen Gerät geändert. Öffne ihn erneut.")
+		return
+	}
 	item.Lists = canonicalLists(item.Lists, next.Lists)
 	setCompletion(&item, previous)
 	var before []entry
 	if previous != nil {
+		if a.hosted && previous.Revision != item.Revision {
+			fail(w, 409, "Dieser Titel wurde auf einem anderen Gerät geändert. Öffne ihn erneut.")
+			return
+		}
 		if equalEntry(*previous, item) {
 			reply(w, 200, true)
 			return
@@ -224,12 +248,39 @@ func (a *app) entries(w http.ResponseWriter, r *http.Request) {
 	a.commit(w, next)
 }
 
-func (a *app) commit(w http.ResponseWriter, next library) {
+// persist is called while a.mu is held. Hosted edits carry revision checks for title forms.
+func (a *app) persist(next library) error {
+	if a.hosted {
+		previous := make(map[string]entry, len(a.data.Entries))
+		for _, item := range a.data.Entries {
+			previous[item.ID] = item
+		}
+		next.Entries = append([]entry{}, next.Entries...)
+		for i, item := range next.Entries {
+			old, ok := previous[item.ID]
+			if ok && equalEntry(old, item) {
+				next.Entries[i].Revision = old.Revision
+				continue
+			}
+			revision, err := randomToken()
+			if err != nil {
+				return err
+			}
+			next.Entries[i].Revision = revision
+		}
+	}
 	if err := writeLibrary(a.path, next); err != nil {
+		return err
+	}
+	a.data = next
+	return nil
+}
+
+func (a *app) commit(w http.ResponseWriter, next library) {
+	if err := a.persist(next); err != nil {
 		fail(w, 500, "Die Änderungen konnten nicht gespeichert werden.")
 		return
 	}
-	a.data = next
 	reply(w, 200, true)
 }
 
@@ -237,17 +288,19 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if r.Method == "GET" {
-		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "language": a.data.Settings.locale(), "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers, "view": a.data.Settings.View, "chartGenres": chartGenreOptions()})
+		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "steamUser": a.data.Settings.SteamUser, "hasSteam": a.data.Settings.SteamKey != "", "language": a.data.Settings.locale(), "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers, "view": a.data.Settings.View, "chartGenres": chartGenreOptions()})
 		return
 	}
 	var request struct {
-		Token           string
-		Watchmode       string
-		Region          string
-		Language        string
-		Remove          bool
-		RemoveWatchmode bool
-		Providers       *[]string
+		SteamUser, SteamKey *string
+		RemoveSteam         bool
+		Token               string
+		Watchmode           string
+		Region              string
+		Language            string
+		Remove              bool
+		RemoveWatchmode     bool
+		Providers           *[]string
 	}
 	if !decode(w, r, &request) {
 		return
@@ -256,6 +309,24 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 	if len(request.Region) != 2 || strings.ContainsFunc(request.Region, func(c rune) bool { return c < 'A' || c > 'Z' }) || len(request.Token) > 1024 || len(request.Watchmode) > 256 {
 		fail(w, 400, "Prüfe Ländercode und TMDB-Token.")
 		return
+	}
+	if request.SteamUser != nil {
+		id := strings.TrimSpace(*request.SteamUser)
+		if id != "" && !steamUserID.MatchString(id) {
+			fail(w, 400, "Enter a 17-digit SteamID64.")
+			return
+		}
+		next.Settings.SteamUser = id
+	}
+	if request.RemoveSteam {
+		next.Settings.SteamKey = ""
+	} else if request.SteamKey != nil && strings.TrimSpace(*request.SteamKey) != "" {
+		key := strings.TrimSpace(*request.SteamKey)
+		if !steamAPIKey.MatchString(key) {
+			fail(w, 400, "Enter a valid Steam Web API key.")
+			return
+		}
+		next.Settings.SteamKey = key
 	}
 	next.Settings.Region = request.Region
 	if request.Language != "" {
@@ -309,8 +380,17 @@ func (a *app) getSettings() settings {
 	return a.data.Settings
 }
 
+var accountWeb = func() http.Handler {
+	web, _ := fs.Sub(assets, "web")
+	return http.FileServerFS(web)
+}()
+
 func (a *app) routes() *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/account", a.desktopAccount)
+	mux.HandleFunc("POST /api/account", a.desktopAccount)
+	mux.HandleFunc("PUT /api/account/import", a.importLocalLibrary)
+	mux.HandleFunc("PUT /api/account/installed-games", a.importAccountGames)
 	mux.HandleFunc("GET /api/entries", a.entries)
 	mux.HandleFunc("PUT /api/entries", a.entries)
 	mux.HandleFunc("DELETE /api/entries", a.entries)
@@ -319,6 +399,8 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/search", a.search)
 	mux.HandleFunc("GET /api/details", a.details)
 	mux.HandleFunc("GET /api/cover", a.lookupCover)
+	mux.HandleFunc("GET /api/advisories", a.advisories)
+	mux.HandleFunc("GET /api/steam-info", a.steamInfo)
 	mux.HandleFunc("GET /api/imdb-rating", a.imdbRating)
 	mux.HandleFunc("GET /api/movie-trailer", a.movieTrailer)
 	mux.HandleFunc("GET /api/movie-series", a.movieSeries)
@@ -384,8 +466,7 @@ func (a *app) routes() *http.ServeMux {
 		default:
 		}
 	})
-	web, _ := fs.Sub(assets, "web")
-	mux.Handle("GET /", http.FileServerFS(web))
+	mux.Handle("GET /", accountWeb)
 	return mux
 }
 
@@ -420,16 +501,25 @@ func serve(noLaunch bool, dataDir string) error {
 		update: updateCheck{status: updateStatus{State: "idle"}}}
 	address := listener.Addr().String()
 	localURL := "http://" + address + "/" + a.token + "/"
-	mux := http.StripPrefix("/"+a.token, a.routes())
+	a.remote = readDesktopAccount(dataDir)
+	if _, err := os.Stat(filepath.Join(dataDir, "account-host.enabled")); err == nil {
+		a.host, a.hostHTTP, _ = listenAccountHost(filepath.Join(dataDir, "Kontoserver"))
+	}
+	defer func() {
+		a.mu.Lock()
+		hostHTTP := a.hostHTTP
+		a.mu.Unlock()
+		if hostHTTP != nil {
+			_ = hostHTTP.Close()
+		}
+	}()
+	mux := http.StripPrefix("/"+a.token, a.withAccountProxy(a.routes()))
 	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 35 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != address || !strings.HasPrefix(r.URL.Path, "/"+a.token+"/") || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != "http://"+address) {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		accountHeaders(w)
 		mux.ServeHTTP(w, r)
 	})}
 	go server.Serve(listener)
@@ -453,7 +543,27 @@ func serve(noLaunch bool, dataDir string) error {
 func main() {
 	noLaunch := flag.Bool("serve", false, "Start local test server without opening a window")
 	dataDir := flag.String("data", "", "Path for personal data")
+	hostAccounts := flag.Bool("account-host", false, "Serve Mediathek accounts on 127.0.0.1:8765")
 	flag.Parse()
+	if *hostAccounts {
+		folder := *dataDir
+		if folder == "" {
+			base, err := os.UserConfigDir()
+			if err != nil {
+				showError(err.Error())
+				return
+			}
+			folder = filepath.Join(base, storageName, "Kontoserver")
+		}
+		_, server, err := listenAccountHost(folder)
+		if err != nil {
+			showError(err.Error())
+			return
+		}
+		defer server.Close()
+		log.Printf("Mediathek account server: http://%s/ (invite: %s)", accountPort, filepath.Join(folder, "invite.txt"))
+		select {}
+	}
 	if !*noLaunch {
 		release, err := lockInstance()
 		if err != nil {

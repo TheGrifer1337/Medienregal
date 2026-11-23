@@ -257,11 +257,10 @@ func (a *app) importHistory(w http.ResponseWriter, r *http.Request) {
 		next := a.data
 		next.Entries = result.Entries
 		next.LastHistoryImport = result.changes
-		if err := writeLibrary(a.path, next); err != nil {
+		if err := a.persist(next); err != nil {
 			fail(w, 500, "Die Auswahl konnte nicht gespeichert werden.")
 			return
 		}
-		a.data = next
 	}
 	reply(w, 200, result)
 }

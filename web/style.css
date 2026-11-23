@@ -246,3 +246,31 @@ body[data-category=game] .series-scene{opacity:.88;transform:none}
 .media-extra {margin:.5rem 0}
 .barcode-preview {width:min(100%,480px);margin:.5rem 0;border-radius:8px}
 .movie-trailer-player:not(:empty) {margin-top:.7rem}
+
+.library-layout {display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,235px);gap:clamp(16px,2.5vw,38px);align-items:start}
+.recommendations {min-width:0;margin-top:24px;padding:15px;border:1px solid var(--border);border-radius:12px;background:#211b28}
+.recommendations h2 {font-size:1.1rem;margin:0 0 .4rem;color:var(--theme)}
+.recommendation-item {display:flex;align-items:center;gap:9px;width:100%;margin:.45rem 0;text-align:left;white-space:normal}
+.recommendation-item .cover {width:38px;flex:none;font-size:.75rem;border-radius:4px}
+.recommendation-item span:last-child {overflow-wrap:anywhere}
+.side-by-side-scores {display:flex;gap:.35rem .7rem;align-items:center;flex-wrap:wrap;margin-top:.3rem}
+.steam-activity {display:block;margin-top:.35rem}
+.advisory-panel,.account-server {margin:.65rem 0;padding:.8rem;border:1px solid var(--border);border-radius:10px;background:var(--panel)}
+.advisory-panel p {margin:.3rem 0}
+.account-server input {width:100%}
+#rating-gap {display:flex;align-items:center;gap:.35rem}
+.filter-status {grid-column:1/-1}
+.card.gap-excluded {display:none}
+@media(max-width:900px) {
+  .library-layout {grid-template-columns:minmax(0,1fr)}
+  .recommendations {margin-top:0}
+}
+@media(max-width:600px) {
+  .tabs {width:100%;overflow:auto}
+  .tabs button {flex:none}
+  .top-actions {flex-wrap:wrap}
+  .top-actions button {min-height:42px}
+  .top-inner {grid-template-columns:minmax(0,1fr) auto}
+  body[data-platform=web] .annual-chart {padding-bottom:env(safe-area-inset-bottom)}
+  body[data-platform=web] .settings-form input, body[data-platform=web] .settings-form select {font-size:16px}
+}

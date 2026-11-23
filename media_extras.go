@@ -113,11 +113,10 @@ func (a *app) goals(w http.ResponseWriter, r *http.Request) {
 	} else {
 		next.Goals[request.Year] = selected
 	}
-	if err := writeLibrary(a.path, next); err != nil {
+	if err := a.persist(next); err != nil {
 		fail(w, 500, "Das Jahresziel konnte nicht gespeichert werden.")
 		return
 	}
-	a.data = next
 	reply(w, 200, next.Goals)
 }
 
