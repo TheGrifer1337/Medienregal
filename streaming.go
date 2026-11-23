@@ -154,9 +154,8 @@ func (a *app) streaming(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cacheKey := struct {
-		id    string
-		prefs settings
-	}{id, prefs}
+		id, tmdb, watchmode, region string
+	}{id, prefs.TMDB, prefs.Watchmode, prefs.Region}
 	if cached, ok := offerCache.Load(cacheKey); ok {
 		value := cached.(cachedOffers)
 		if time.Now().Before(value.expires) {

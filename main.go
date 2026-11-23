@@ -46,9 +46,10 @@ type entry struct {
 }
 
 type settings struct {
-	TMDB      string `json:"tmdb"`
-	Watchmode string `json:"watchmode"`
-	Region    string `json:"region"`
+	TMDB      string   `json:"tmdb"`
+	Watchmode string   `json:"watchmode"`
+	Region    string   `json:"region"`
+	Providers []string `json:"providers,omitempty"`
 }
 
 type library struct {
@@ -57,11 +58,13 @@ type library struct {
 }
 
 type app struct {
-	mu    sync.Mutex
-	path  string
-	data  library
-	token string
-	exit  chan struct{}
+	mu       sync.Mutex
+	path     string
+	data     library
+	token    string
+	exit     chan struct{}
+	update   updateCheck
+	lifetime context.Context
 }
 
 var statuses = map[string][]string{
@@ -189,7 +192,7 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if r.Method == "GET" {
-		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != ""})
+		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers})
 		return
 	}
 	var request struct {
@@ -198,6 +201,7 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 		Region          string
 		Remove          bool
 		RemoveWatchmode bool
+		Providers       *[]string
 	}
 	if !decode(w, r, &request) {
 		return
@@ -208,6 +212,27 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next.Settings.Region = request.Region
+	if request.Providers != nil {
+		if len(*request.Providers) > 100 {
+			fail(w, 400, "Zu viele Streaminganbieter ausgewählt.")
+			return
+		}
+		providers := []string{}
+		seen := map[string]bool{}
+		for _, value := range *request.Providers {
+			name := strings.Join(strings.Fields(value), " ")
+			if len(name) > 120 {
+				fail(w, 400, "Ein Name der Streaminganbieter ist zu lang.")
+				return
+			}
+			key := strings.ToLower(name)
+			if key != "" && !seen[key] {
+				providers = append(providers, name)
+				seen[key] = true
+			}
+		}
+		next.Settings.Providers = providers
+	}
 	switch {
 	case request.Remove:
 		next.Settings.TMDB = ""
@@ -239,6 +264,14 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/search", a.search)
 	mux.HandleFunc("GET /api/details", a.details)
 	mux.HandleFunc("GET /api/streaming", a.streaming)
+	mux.HandleFunc("GET /api/update", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, 200, a.update.snapshot())
+	})
+	mux.HandleFunc("POST /api/update", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, 202, a.update.start(a.lifetime))
+	})
+	mux.HandleFunc("POST /api/history/preview", a.previewHistory)
+	mux.HandleFunc("POST /api/history/import", a.importHistory)
 	mux.HandleFunc("POST /api/open-link", func(w http.ResponseWriter, r *http.Request) {
 		var request struct{ URL string }
 		if !decode(w, r, &request) {
@@ -292,7 +325,10 @@ func serve(noLaunch bool, dataDir string) error {
 	if _, err = rand.Read(key); err != nil {
 		return err
 	}
-	a := &app{path: dataPath, data: data, token: hex.EncodeToString(key), exit: make(chan struct{}, 1)}
+	lifetime, stop := context.WithCancel(context.Background())
+	defer stop()
+	a := &app{path: dataPath, data: data, token: hex.EncodeToString(key), exit: make(chan struct{}, 1), lifetime: lifetime,
+		update: updateCheck{status: updateStatus{State: "idle"}}}
 	address := listener.Addr().String()
 	localURL := "http://" + address + "/" + a.token + "/"
 	mux := http.StripPrefix("/"+a.token, a.routes())
@@ -313,20 +349,14 @@ func serve(noLaunch bool, dataDir string) error {
 		<-a.exit
 		return nil
 	}
-	updates, stopUpdates := context.WithCancel(context.Background())
-	result := make(chan string, 1)
-	go func() { result <- stageUpdate(updates) }()
+	a.update.start(lifetime)
 	windowErr := runWindow(localURL, dataDir, a.exit)
-	stopUpdates()
+	stop()
 	shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdown)
-	select {
-	case pending := <-result:
-		if pending != "" {
-			_ = applyUpdate(pending)
-		}
-	default:
+	if err := a.update.apply(); err != nil && windowErr == nil {
+		return err
 	}
 	return windowErr
 }

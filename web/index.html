@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="de">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14131b"><title>Medatheke by Maximilian</title><link rel="icon" href="bookshelf.png"><link rel="stylesheet" href="style.css"><script src="app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14131b"><title>Medatheke by Maximilian</title><link rel="icon" href="bookshelf.png"><link rel="stylesheet" href="style.css"><script src="history.js" defer></script><script src="providers.js" defer></script><script src="app.js" defer></script></head>
 <body data-category="movie">
 <header class="top"><div class="top-inner"><div class="brand"><img src="bookshelf.png" width="42" height="42" alt=""><div>Medatheke<span>by Maximilian</span></div></div><nav class="tabs" aria-label="Medienart" id="tabs"></nav><div class="top-actions"><button class="quiet" id="settings">Einstellungen</button><button class="quiet" id="exit">Beenden</button></div></div></header>
 <main>
@@ -10,7 +10,7 @@
  </section>
  <div class="toolbar">
   <div class="filters" id="status-filters" aria-label="Statusfilter"></div>
-  <div class="selects"><select aria-label="Genre" id="genre"></select><select aria-label="Sortierung" id="sort"><option value="title">Titel A–Z</option><option value="best">Bewertung ↓</option><option value="worst">Bewertung ↑</option><option value="genre">Genre A–Z</option></select></div>
+  <div class="selects"><label id="provider-filter" hidden><input type="checkbox" id="only-providers"> Nur bei meinen Anbietern</label><select aria-label="Genre" id="genre"></select><select aria-label="Sortierung" id="sort"><option value="title">Titel A–Z</option><option value="best">Bewertung ↓</option><option value="worst">Bewertung ↑</option><option value="genre">Genre A–Z</option></select></div>
  </div>
  <p id="notice" role="status"></p><section class="shelf" id="shelf" aria-label="Gespeicherte Titel"></section>
 </main>

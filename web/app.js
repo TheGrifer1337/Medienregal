@@ -6,7 +6,7 @@ const definitions = {
   book: { title:'Bücher', singular:'Buch', icon:'▥', unit:'Seiten', states:{ read:'Gelesen', started:'Angefangen', finished:'Beendet', want:'Möchte ich lesen' } }
 };
 const ratings = { screen:['Qualität','Storyline','Allgemein'], book:['Storyline','Charakterentwicklung','Schreibstil'] };
-const state = { kind:'movie', entries:[], status:'', genre:'', sort:'title', prefs:null, streamCache:new Map(), streamJobs:[], activeJobs:0 };
+const state = { kind:'movie', entries:[], status:'', genre:'', sort:'title', onlyProviders:false, prefs:null, streamCache:new Map(), streamJobs:[], activeJobs:0 };
 const $ = id => document.getElementById(id);
 const modal = $('modal');
 const modalBody = $('modal-body');
@@ -179,8 +179,13 @@ function render() {
   $('genre').value=state.genre;
   const visible=items.filter(item=>(!state.status||item.status===state.status)&&(!state.genre||genreLabels(item.kind,item.genres||[]).some(genre=>genreKey(genre)===state.genre)));
   visible.sort(compare);
-  shelf.replaceChildren(...visible.map(card));
-  if (visible.length) return;
+  const onlyProviders=providerFilter();
+  const cards=visible.map(card);
+  shelf.replaceChildren(...cards);
+  if (visible.length) {
+    if (onlyProviders) filterWatchCards(visible,cards);
+    return;
+  }
   const empty=text('div',null,'empty');
   const body=text('div');
   const symbol=text('span',info.icon,'empty-symbol');
@@ -256,22 +261,25 @@ function streamPanel(item) {
   }
   box.append(text('small','Streamingangebote werden geladen …'));
   loadStream(item.id).then(data=>{
+    if (!box.isConnected) return;
+    const offers=selectedProviderOffers(data.offers);
+    const personal=state.prefs?.providers?.length>0;
     box.replaceChildren(text('strong','Streaming · '+data.region));
-    if (!data.offers.length) box.append(text('small','Keine gemeldeten Angebote.'));
+    if (!offers.length) box.append(text('small',personal?'Keine Angebote bei deinen Anbietern gemeldet.':'Keine gemeldeten Angebote.'));
     const list=text('ul');
-    data.offers.slice(0,4).forEach(offer=>list.append(offerLine(offer)));
+    offers.slice(0,4).forEach(offer=>list.append(offerLine(offer)));
     box.append(list);
-    if (data.offers.length>4) {
+    if (offers.length>4) {
       const extra=text('details');
-      extra.append(text('summary','Weitere '+(data.offers.length-4)+' Angebote'));
+      extra.append(text('summary','Weitere '+(offers.length-4)+' Angebote'));
       const remaining=text('ul');
-      data.offers.slice(4).forEach(offer=>remaining.append(offerLine(offer)));
+      offers.slice(4).forEach(offer=>remaining.append(offerLine(offer)));
       extra.append(remaining); box.append(extra);
     }
     if (data.tmdb) box.append(text('small','Anbieterangaben von JustWatch über TMDB.'));
     if (data.watchmode) box.append(text('small','Streamingdaten von Watchmode. Preis ggf. je Staffel oder Folge.'));
     if (data.partial) box.append(text('small','Eine Datenquelle ist gerade nicht verfügbar.'));
-    box.append(link(httpsURL(data.link)||justwatch,'Alle Angebote und Preise ansehen'));
+    box.append(link(httpsURL(data.link)||justwatch,personal?'Auch andere Anbieter auf JustWatch prüfen':'Alle Angebote und Preise ansehen'));
   }).catch(error=>{
     box.replaceChildren(text('small',error.message),link(justwatch,'Angebote und Preise bei JustWatch'));
   });
@@ -312,6 +320,7 @@ function openSearch() {
   const results=text('div',null,'results');
   results.setAttribute('aria-live','polite');
   inner.append(form,results,button('Manuell hinzufügen',()=>openEditor({id:'manual:'+crypto.randomUUID(),kind,title:query.value.trim(),ratings:[0,0,0]}),'quiet'));
+  if (kind!=='book') inner.append(button('Streamingverlauf importieren',openHistory,'quiet search-import'));
   query.focus();
   form.addEventListener('submit',async event=>{
     event.preventDefault(); submit.disabled=true;
@@ -519,10 +528,46 @@ function openEditor(original) {
   });
 }
 
+function updateControls() {
+  const controls=text('section',null,'update-controls');
+  const message=text('p',null,'form-note');
+  message.setAttribute('role','status');
+  let timer;
+  const check=button('Nach Updates suchen',()=>refresh('POST'),'quiet');
+  check.disabled=true;
+  const refresh=async (method='GET')=>{
+    clearTimeout(timer);
+    if (!controls.isConnected || !modal.open) return;
+    if (method==='POST') { check.disabled=true; message.textContent='Suche nach Updates …'; }
+    try {
+      const status=await api('update',method);
+      const messages={
+        current:'Version '+status.version+' ist aktuell.',
+        checking:'Suche nach Updates …',
+        downloading:'Version '+status.version+' wird heruntergeladen …',
+        ready:'Version '+status.version+' ist bereit. Beim Beenden wird das Update installiert.'
+      };
+      const waiting=status.state==='checking'||status.state==='downloading';
+      message.textContent=messages[status.state]||status.message||'';
+      check.disabled=waiting||status.state==='ready'||status.state==='unavailable';
+      if (waiting) timer=setTimeout(refresh,650);
+    } catch(e) {
+      message.textContent=e.message;
+      check.disabled=false;
+    }
+  };
+  controls.append(text('p','Installierte Version '+state.prefs.version,'muted'),check,message);
+  return {controls,refresh};
+}
+
 function openSettings() {
   if (!state.prefs) return;
   const inner=show('Einstellungen');
+  const update=updateControls();
+  inner.append(update.controls,button('Streamingverlauf importieren',openHistory,'quiet settings-import'));
+  update.refresh();
   const form=text('form',null,'settings-form');
+  const providers=providerPicker();
   const region=input('text','region',state.prefs.region);region.required=true;region.maxLength=2;region.pattern='[a-zA-Z]{2}';
   const watch=input('password','watch','',state.prefs.hasWatchmode?'Schlüssel gespeichert':'API-Schlüssel');
   const tmdb=input('password','tmdb','',state.prefs.hasTmdb?'Token gespeichert':'API Read Access Token');
@@ -530,7 +575,7 @@ function openSettings() {
   const removeWatch=input('checkbox','removeWatch');
   const removeTmdb=input('checkbox','removeTmdb');
   for(const [node,on] of [[removeWatch,state.prefs.hasWatchmode],[removeTmdb,state.prefs.hasTmdb]]) node.disabled=!on;
-  form.append(text('p','Version '+state.prefs.version,'muted'),field('Streaming-Land (DE, AT, CH …)',region),
+  form.append(field('Streaming-Land (DE, AT, CH …)',region),providers.fieldset,
     field('Watchmode für Anbieter und Preise',watch),link('https://api.watchmode.com/requestApiKey/','Watchmode-Schlüssel für dein Land beziehen'));
   if (state.prefs.hasWatchmode) { const label=field('Watchmode-Schlüssel entfernen',removeWatch);label.className='check';form.append(label); }
   form.append(field('TMDB für deutsche Titel und weitere Anbieter',tmdb),link('https://www.themoviedb.org/settings/api','TMDB-API-Zugang öffnen'));
@@ -542,7 +587,7 @@ function openSettings() {
   form.addEventListener('submit',async event=>{
     event.preventDefault();save.disabled=true;
     try {
-      await api('settings','PUT',{region:region.value.toUpperCase(),token:tmdb.value,watchmode:watch.value,remove:removeTmdb.checked,removeWatchmode:removeWatch.checked});
+      await api('settings','PUT',{region:region.value.toUpperCase(),token:tmdb.value,watchmode:watch.value,remove:removeTmdb.checked,removeWatchmode:removeWatch.checked,providers:providers.selected()});
       state.prefs=await api('settings');
       state.streamCache.clear();
       modal.close();render();
@@ -562,6 +607,7 @@ document.addEventListener('click', event=>{
 });
 $('add').addEventListener('click',openSearch);
 $('settings').addEventListener('click',openSettings);
+$('only-providers').addEventListener('change',event=>{ state.onlyProviders=event.target.checked;render(); });
 $('genre').addEventListener('change',event=>{ state.genre=event.target.value;render(); });
 $('sort').addEventListener('change',event=>{ state.sort=event.target.value;render(); });
 $('exit').addEventListener('click',async()=>{

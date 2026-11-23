@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -64,16 +65,72 @@ func bestUpdate(releases []release, current int, best int, repo string) (int, re
 	return best, selected
 }
 
-func stageUpdate(ctx context.Context) string {
+type updateStatus struct {
+	State   string `json:"state"`
+	Version string `json:"version,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+type updateCheck struct {
+	mu        sync.Mutex
+	status    updateStatus
+	installer string
+	asset     releaseAsset
+}
+
+func (u *updateCheck) snapshot() updateStatus {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.status
+}
+
+func (u *updateCheck) start(ctx context.Context) updateStatus {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	switch u.status.State {
+	case "checking", "downloading", "ready":
+		return u.status
+	}
+	u.status = updateStatus{State: "checking"}
+	go u.run(ctx)
+	return u.status
+}
+
+func (u *updateCheck) run(ctx context.Context) {
+	status, path, asset := stageUpdate(ctx, func(next string) {
+		u.mu.Lock()
+		u.status = updateStatus{State: "downloading", Version: next}
+		u.mu.Unlock()
+	})
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.status, u.installer, u.asset = status, path, asset
+}
+
+func (u *updateCheck) apply() error {
+	u.mu.Lock()
+	path, asset := u.installer, u.asset
+	u.mu.Unlock()
+	if path == "" {
+		return nil
+	}
+	if !verifyInstaller(path, asset) {
+		return errors.New("Die heruntergeladene Update-Datei ist beschädigt. Suche erneut nach Updates.")
+	}
+	return applyUpdate(path)
+}
+
+func stageUpdate(ctx context.Context, downloading func(string)) (updateStatus, string, releaseAsset) {
+	unable := updateStatus{State: "unavailable", Message: "Automatische Updates sind für die installierte Windows-Version verfügbar."}
 	if runtime.GOOS != "windows" || !repoName.MatchString(releaseRepo) {
-		return ""
+		return unable, "", releaseAsset{}
 	}
 	exe, err := os.Executable()
 	if err != nil {
-		return ""
+		return unable, "", releaseAsset{}
 	}
 	if _, err = os.Stat(filepath.Join(filepath.Dir(exe), "Medienregal-Deinstallieren.exe")); err != nil {
-		return ""
+		return unable, "", releaseAsset{}
 	}
 	current := versionNumber("v" + version)
 	best := current
@@ -82,7 +139,7 @@ func stageUpdate(ctx context.Context) string {
 		var releases []release
 		address := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=100&page=%d", releaseRepo, page)
 		if err := getJSON(ctx, address, "", &releases); err != nil {
-			return ""
+			return updateStatus{State: "error", Message: "Die Updatesuche konnte GitHub nicht erreichen. Versuche es erneut."}, "", releaseAsset{}
 		}
 		next, asset := bestUpdate(releases, current, best, releaseRepo)
 		if next > best {
@@ -93,24 +150,26 @@ func stageUpdate(ctx context.Context) string {
 		}
 	}
 	if selected.URL == "" {
-		return ""
+		return updateStatus{State: "current", Version: version}, "", releaseAsset{}
 	}
+	nextVersion := fmt.Sprintf("%d.%d", best/10, best%10)
+	downloadError := updateStatus{State: "error", Version: nextVersion, Message: "Das Update konnte nicht geladen werden. Versuche es erneut."}
 	base, err := os.UserCacheDir()
 	if err != nil {
-		return ""
+		return downloadError, "", releaseAsset{}
 	}
 	dir := filepath.Join(base, product, "Updates")
 	if err = os.MkdirAll(dir, 0700); err != nil {
-		return ""
+		return downloadError, "", releaseAsset{}
 	}
 	path := filepath.Join(dir, selected.Name)
-	if verifyInstaller(path, selected) {
-		return path
+	if !verifyInstaller(path, selected) {
+		downloading(nextVersion)
+		if err = downloadInstaller(ctx, path, selected); err != nil {
+			return downloadError, "", releaseAsset{}
+		}
 	}
-	if err = downloadInstaller(ctx, path, selected); err != nil {
-		return ""
-	}
-	return path
+	return updateStatus{State: "ready", Version: nextVersion}, path, selected
 }
 
 func verifyInstaller(path string, asset releaseAsset) bool {
