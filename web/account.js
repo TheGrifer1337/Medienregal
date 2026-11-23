@@ -53,6 +53,28 @@ function showAccount() {
         location.reload();
       } catch(e) {error.textContent=e.message;}
     },'quiet'));
+    if (!mobileMode()) {
+      const progress=text('section',null,'account-server');
+      inner.append(progress);
+      api('device-sync').then(state=>{
+        if (!progress.isConnected) return;
+        progress.append(text('p',state.pending ? state.pending+' '+tr('Änderungen warten auf den Server') : tr('Keine offenen Änderungen'),'form-note'));
+        for (const conflict of state.conflicts||[]) {
+          const row=text('div',null,'settings-form');
+          row.append(text('strong',conflict.current?.title||tr('Titel wurde am Server gelöscht')));
+          for (const [label,keepLocal] of [[tr('Meine Änderung anwenden'),true],[tr('Serverstand übernehmen'),false]]) {
+            row.append(button(label,async()=>{
+              try {
+                await api('device-sync','POST',{id:conflict.id,keepLocal});
+                await refreshCollection();
+                if (inner.isConnected) showAccount();
+              } catch(e) {error.textContent=e.message;}
+            },'quiet'));
+          }
+          progress.append(row);
+        }
+      }).catch(e=>{if (progress.isConnected) progress.textContent=e.message;});
+    }
     inner.append(error);
     return;
   }

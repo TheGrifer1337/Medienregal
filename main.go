@@ -73,6 +73,7 @@ type settings struct {
 }
 
 type library struct {
+	SyncReceipts      []string               `json:"syncReceipts,omitempty"`
 	Entries           []entry                `json:"entries"`
 	Settings          settings               `json:"settings"`
 	Goals             map[int]map[string]int `json:"goals,omitempty"`
@@ -82,6 +83,7 @@ type library struct {
 }
 
 type app struct {
+	syncDeviceMu   sync.Mutex
 	mu             sync.Mutex
 	path           string
 	data           library
@@ -391,6 +393,7 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/account", a.desktopAccount)
 	mux.HandleFunc("PUT /api/account/import", a.importLocalLibrary)
 	mux.HandleFunc("PUT /api/account/installed-games", a.importAccountGames)
+	mux.HandleFunc("POST /api/sync", a.syncCollection)
 	mux.HandleFunc("GET /api/entries", a.entries)
 	mux.HandleFunc("PUT /api/entries", a.entries)
 	mux.HandleFunc("DELETE /api/entries", a.entries)
@@ -543,7 +546,8 @@ func serve(noLaunch bool, dataDir string) error {
 func main() {
 	noLaunch := flag.Bool("serve", false, "Start local test server without opening a window")
 	dataDir := flag.String("data", "", "Path for personal data")
-	hostAccounts := flag.Bool("account-host", false, "Serve Mediathek accounts on 127.0.0.1:8765")
+	hostAccounts := flag.Bool("account-host", false, "Serve Mediathek accounts")
+	accountListen := flag.String("account-listen", accountPort, "Listen address for standalone account host")
 	flag.Parse()
 	if *hostAccounts {
 		folder := *dataDir
@@ -555,13 +559,13 @@ func main() {
 			}
 			folder = filepath.Join(base, storageName, "Kontoserver")
 		}
-		_, server, err := listenAccountHost(folder)
+		_, server, err := listenAccountHostAt(folder, *accountListen)
 		if err != nil {
 			showError(err.Error())
 			return
 		}
 		defer server.Close()
-		log.Printf("Mediathek account server: http://%s/ (invite: %s)", accountPort, filepath.Join(folder, "invite.txt"))
+		log.Printf("Mediathek account server: http://%s/ (invite: %s)", *accountListen, filepath.Join(folder, "invite.txt"))
 		select {}
 	}
 	if !*noLaunch {

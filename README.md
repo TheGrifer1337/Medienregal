@@ -99,3 +99,25 @@ Wenn der PC keinen dauerhaften Server betreiben soll, kann ein dauerhaft verfüg
 Der Bereich **Für dich entdeckt** am Rand nutzt Favoriten, Bewertungen, Genres und bei Büchern auch Autorennamen. **Settings** nimmt SteamID64 und einen persönlichen Steam-Web-API-Schlüssel entgegen. Für zugängliche Steam-Spiele zeigt die Mediathek Spielzeit und, sofern von Steam geliefert, den letzten Spieltermin. Vor dem Öffnen der Wiedergabe oder dem Spielstart werden verfügbare landesspezifische Altersfreigaben und Links zu Inhaltswarnungen angezeigt. Bei Filmwertungen wird die eigene 5-Punkte-Wertung für den Abweichungsfilter auf 10 Punkte umgerechnet.
 
 **Liste exportieren** erstellt eine HTML-Datei mit Titel, Cover und eigener Wertung. Eingebettete eigene Cover stehen direkt in der Datei, andere Cover werden über ihre Bildadresse geladen. Der Export enthält keine Notizen, Zugangsdaten oder Leihdaten.
+
+## Native iPhone-App und Offline-Abgleich
+
+Unter [ios/Mediathek](ios/Mediathek) liegt die native SwiftUI-App für iOS 17 oder neuer. Sie speichert ihre Sammlung und offenen Änderungen auf dem Gerät und hält die Anmeldung im iOS-Schlüsselbund. Nach der ersten Anmeldung kannst du Filme, Serien, Bücher und Spiele offline hinzufügen, bearbeiten und löschen. Windows hält im Kontomodus ebenfalls die zuletzt geladene Sammlung und vorgemerkte Titeländerungen lokal fest. Beide Geräte sollten auf Version 2.2 mit einem Kontoserver ab Version 2.2 arbeiten.
+
+Bei wiederhergestellter Verbindung synchronisiert die iPhone-App im Vordergrund automatisch. Im Hintergrund kann iOS gelegentlich einen Abgleich einplanen. Beim nächsten Öffnen holt die App ausstehende Änderungen nach. Windows prüft beim Öffnen und regelmäßig im Vordergrund. Änderungen an unterschiedlichen Feldern werden zusammengeführt. Bei unterschiedlichen Änderungen am gleichen Feld oder einer gleichzeitig erfolgten Löschung kannst du unter **Konto** in Windows bzw. im Konfliktbereich auf dem iPhone entscheiden, welcher Stand gelten soll.
+
+### Kontoserver ohne laufenden Windows-PC
+
+Starte den vorbereiteten App-Server auf einem dauerhaft erreichbaren Server mit Docker Compose. Eine DNS-Adresse muss auf den Rechner zeigen. Caddy stellt dafür HTTPS bereit.
+
+```sh
+export MEDIATHEK_DOMAIN=mediathek.example.org
+docker compose -f deploy/compose.yaml up -d --build
+docker compose -f deploy/compose.yaml exec mediathek cat /accounts/invite.txt
+```
+
+Der Einladungscode ist für die Kontoerstellung. Gib dieselbe Serveradresse und dasselbe Mediathek-Konto am iPhone und unter **Konto** in Windows ein. Eine Verlagerung eines v2.1-Kontoservers übernimmt dessen gesamtes Verzeichnis `Kontoserver` in das neue dauerhafte Volume bei gestoppten Servern. Für eine lokale Sammlung ohne bisheriges Konto kann Windows diese beim ersten Anmelden in ein leeres Konto kopieren. Sichere das Volume `accounts` für die Kontosammlungen. Eine Beispieladresse in dieser Anleitung muss durch deine eigene HTTPS-Adresse ersetzt werden.
+
+### Auf iPhone installieren
+
+Öffne `ios/Mediathek/Mediathek.xcodeproj` in Xcode. Für ein eigenes Gerät wähle dein Apple-Team unter **Signing & Capabilities**, gegebenenfalls eine eigene Bundle-ID, und starte das Projekt auf deinem verbundenen iPhone. Für TestFlight erstelle ein signiertes Archive, lade es in dein App Store Connect hoch und aktiviere dort die Testgruppe. Der GitHub-Workflow **iPhone Build** prüft einen Build für den Simulator und stellt ihn als Simulator-Artefakt bereit. Die Installation auf einem echten iPhone setzt eine Apple-signierte Distribution voraus.

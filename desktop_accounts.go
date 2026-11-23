@@ -162,6 +162,9 @@ func (a *app) withAccountProxy(local http.Handler) http.Handler {
 			local.ServeHTTP(w, r)
 			return
 		}
+		if a.offlineAccount(w, r, remote) {
+			return
+		}
 		response, err := accountCall(r.Context(), remote, r.Method, r.URL.RequestURI(), http.MaxBytesReader(w, r.Body, 8*1024*1024), r.Header.Get("Content-Type"))
 		if err != nil {
 			fail(w, 502, "Der Kontoserver ist nicht erreichbar.")

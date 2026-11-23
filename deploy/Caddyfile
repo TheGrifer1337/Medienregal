@@ -1,0 +1,3 @@
+{$MEDIATHEK_DOMAIN} {
+	reverse_proxy mediathek:8765
+}

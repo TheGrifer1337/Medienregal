@@ -730,5 +730,6 @@ $('only-rating-gap').addEventListener('change',event=>{state.onlyRatingGap=event
 startLibrary().catch(error=>{ $('notice').textContent=error.message; });
 document.addEventListener('visibilitychange',refreshOnlineLibrary);
 window.addEventListener('focus',refreshOnlineLibrary);
+window.addEventListener('online',refreshOnlineLibrary);
 setInterval(refreshOnlineLibrary,20000);
 setInterval(()=>{ if(state.prefs&&!modal.open&&!document.hidden) render(); },600000);

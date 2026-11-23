@@ -460,7 +460,11 @@ func readDesktopAccount(folder string) desktopAccount {
 }
 
 func listenAccountHost(folder string) (*accountHost, *http.Server, error) {
-	listener, err := net.Listen("tcp4", accountPort)
+	return listenAccountHostAt(folder, accountPort)
+}
+
+func listenAccountHostAt(folder, address string) (*accountHost, *http.Server, error) {
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, nil, err
 	}

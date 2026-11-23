@@ -529,3 +529,11 @@ Object.assign(translations,{
   "Der Kontoserver konnte nicht gestartet werden. Prüfe Port 8765.":["The account server could not start. Check port 8765.","无法启动账户服务器。请检查端口 8765。"],
   "Das Konto enthält bereits Daten. Die lokale Sammlung wurde nicht verändert.":["The account already contains data. The local collection was left intact.","账户已有数据。本地收藏未更改。"],
 });
+
+Object.assign(translations,{
+  "Änderungen warten auf den Server":["changes are waiting for the server","项更改等待同步"],
+  "Keine offenen Änderungen":["No pending changes","没有待同步的更改"],
+  "Titel wurde am Server gelöscht":["Title was deleted on the server","服务器上的条目已删除"],
+  "Meine Änderung anwenden":["Keep my change","应用我的更改"],
+  "Serverstand übernehmen":["Use server version","使用服务器版本"]
+});
