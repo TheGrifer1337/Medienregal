@@ -1,9 +1,9 @@
 'use strict';
 
 const definitions = {
-  movie: { title:'Filme', singular:'Film', icon:'F', states:{ seen:'Angesehen', want:'Möchte ich sehen' } },
-  series: { title:'Serien', singular:'Serie', icon:'S', unit:'Folgen', states:{ seen:'Gesehen', started:'Angefangen', want:'Möchte ich sehen' } },
-  book: { title:'Bücher', singular:'Buch', icon:'B', unit:'Seiten', states:{ read:'Gelesen', started:'Angefangen', finished:'Beendet', want:'Möchte ich lesen' } }
+  movie: { title:'Filme', singular:'Film', icon:'▤', states:{ seen:'Angesehen', want:'Möchte ich sehen' } },
+  series: { title:'Serien', singular:'Serie', icon:'▣', unit:'Folgen', states:{ seen:'Gesehen', started:'Angefangen', want:'Möchte ich sehen' } },
+  book: { title:'Bücher', singular:'Buch', icon:'▥', unit:'Seiten', states:{ read:'Gelesen', started:'Angefangen', finished:'Beendet', want:'Möchte ich lesen' } }
 };
 const ratings = { screen:['Qualität','Storyline','Allgemein'], book:['Storyline','Charakterentwicklung','Schreibstil'] };
 const state = { kind:'movie', entries:[], status:'', genre:'', sort:'title', prefs:null, streamCache:new Map(), streamJobs:[], activeJobs:0 };
@@ -28,6 +28,7 @@ const button = (label, action, className) => {
 const option = (value,label) => new Option(label,value);
 const field = (label, input) => {
   const node=text('label',label);
+  input.removeAttribute('aria-label');
   node.append(input);
   return node;
 };
@@ -73,13 +74,33 @@ function cover(item) {
   return node;
 }
 
+function switchCategory(kind) {
+  if (kind===state.kind) return;
+  state.kind=kind;
+  state.status='';
+  state.genre='';
+  document.body.dataset.category=kind;
+  for (const tab of $('tabs').querySelectorAll('button')) {
+    tab.setAttribute('aria-selected',tab.dataset.kind===kind);
+  }
+  render();
+  for (const panel of [document.querySelector('.hero-content'),shelf]) {
+    panel.classList.remove('category-in');
+    void panel.offsetWidth;
+    panel.classList.add('category-in');
+  }
+}
+
 function tabs() {
   $('tabs').setAttribute('role','tablist');
   $('tabs').replaceChildren(...Object.entries(definitions).map(([kind, info])=>{
-    const tab=button(info.title,()=>{
-      state.kind=kind; state.status=''; state.genre=''; tabs(); render();
-    });
+    const tab=button('',()=>switchCategory(kind));
+    const icon=text('span',info.icon,'tab-icon');
+    icon.setAttribute('aria-hidden','true');
+    tab.append(icon,info.title);
+    tab.dataset.kind=kind;
     tab.setAttribute('role','tab');
+    tab.setAttribute('aria-controls','shelf');
     tab.setAttribute('aria-selected',kind===state.kind);
     return tab;
   }));
@@ -105,7 +126,9 @@ function render() {
   if (visible.length) return;
   const empty=text('div',null,'empty');
   const body=text('div');
-  body.append(text('h2',items.length?'Keine passenden Titel':'Dein Regal ist noch leer'),text('p',items.length?'Wähle einen anderen Status oder ein anderes Genre.':'Finde einen Titel über die Suche oder trage ihn manuell ein.'));
+  const symbol=text('span',info.icon,'empty-symbol');
+  symbol.setAttribute('aria-hidden','true');
+  body.append(symbol,text('h2',items.length?'Keine passenden Titel':'Dein Regal ist noch leer'),text('p',items.length?'Wähle einen anderen Status oder ein anderes Genre.':'Finde einen Titel über die Suche oder trage ihn manuell ein.'));
   if (!items.length) body.append(button('＋ Titel hinzufügen',openSearch,'accent'));
   empty.append(body); shelf.append(empty);
 }
@@ -394,13 +417,22 @@ function openSettings() {
   });
 }
 
+document.addEventListener('click', event=>{
+  if (!window.chrome?.webview || !event.isTrusted) return;
+  const anchor=event.target.closest('a[href]');
+  if (!anchor) return;
+  const address=httpsURL(anchor.href);
+  if (!address) return;
+  event.preventDefault();
+  api('open-link','POST',{url:address}).catch(error=>{ $('notice').textContent=error.message; });
+});
 $('add').addEventListener('click',openSearch);
 $('settings').addEventListener('click',openSettings);
 $('genre').addEventListener('change',event=>{ state.genre=event.target.value;render(); });
 $('sort').addEventListener('change',event=>{ state.sort=event.target.value;render(); });
 $('exit').addEventListener('click',async()=>{
   try { await api('exit','POST'); } catch { return; }
-  document.body.replaceChildren(text('main','Medienregal ist beendet. Du kannst dieses Fenster schließen.'));
+  document.body.replaceChildren(text('main','Die Medatheke ist beendet.'));
   window.close();
 });
 Promise.all([api('entries'),api('settings')]).then(([entries,prefs])=>{

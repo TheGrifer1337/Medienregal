@@ -1,16 +1,18 @@
 <!doctype html>
 <html lang="de">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#141622"><title>Medienregal</title><link rel="stylesheet" href="style.css"><script src="app.js" defer></script></head>
-<body>
-<header class="top"><div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>Medienregal</div><div class="top-actions"><button class="quiet" id="settings">Einstellungen</button><button class="quiet" id="exit">Beenden</button></div></header>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#14131b"><title>Medatheke by Maximilian</title><link rel="icon" href="bookshelf.png"><link rel="stylesheet" href="style.css"><script src="app.js" defer></script></head>
+<body data-category="movie">
+<header class="top"><div class="top-inner"><div class="brand"><img src="bookshelf.png" width="42" height="42" alt=""><div>Medatheke<span>by Maximilian</span></div></div><nav class="tabs" aria-label="Medienart" id="tabs"></nav><div class="top-actions"><button class="quiet" id="settings">Einstellungen</button><button class="quiet" id="exit">Beenden</button></div></div></header>
 <main>
-  <nav class="tabs" aria-label="Medienart" id="tabs"></nav>
-  <section class="heading"><div><h1 id="heading">Filme</h1><p id="count"></p></div><button class="accent" id="add">＋ Titel hinzufügen</button></section>
-  <div class="toolbar">
-    <div class="filters" id="status-filters" aria-label="Status"></div>
-    <div class="selects"><select aria-label="Genre" id="genre"></select><select aria-label="Sortierung" id="sort"><option value="title">Titel A–Z</option><option value="best">Bewertung ↓</option><option value="worst">Bewertung ↑</option><option value="genre">Genre A–Z</option></select></div>
-  </div>
-  <p id="notice" role="status"></p><section class="shelf" id="shelf" aria-label="Gespeicherte Titel"></section>
+ <section class="heading" aria-labelledby="heading">
+  <div class="hero-art" aria-hidden="true"><div class="scene movie-scene"></div><div class="scene series-scene"></div><div class="scene book-scene"></div></div>
+  <div class="hero-content"><h1 id="heading">Filme</h1><p id="count"></p><button class="accent" id="add">＋ Titel hinzufügen</button></div>
+ </section>
+ <div class="toolbar">
+  <div class="filters" id="status-filters" aria-label="Statusfilter"></div>
+  <div class="selects"><select aria-label="Genre" id="genre"></select><select aria-label="Sortierung" id="sort"><option value="title">Titel A–Z</option><option value="best">Bewertung ↓</option><option value="worst">Bewertung ↑</option><option value="genre">Genre A–Z</option></select></div>
+ </div>
+ <p id="notice" role="status"></p><section class="shelf" id="shelf" aria-label="Gespeicherte Titel"></section>
 </main>
 <dialog id="modal"><div id="modal-body"></div></dialog>
 </body></html>

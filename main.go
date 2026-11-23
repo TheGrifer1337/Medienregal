@@ -14,6 +14,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +22,8 @@ import (
 	"time"
 )
 
-const product = "Medienregal"
+const product = "Medatheke by Maximilian"
+const storageName = "Medienregal"
 
 var releaseRepo = "TheGrifer1337/Medienregal"
 var version = "1.0"
@@ -237,6 +239,22 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/search", a.search)
 	mux.HandleFunc("GET /api/details", a.details)
 	mux.HandleFunc("GET /api/streaming", a.streaming)
+	mux.HandleFunc("POST /api/open-link", func(w http.ResponseWriter, r *http.Request) {
+		var request struct{ URL string }
+		if !decode(w, r, &request) {
+			return
+		}
+		address, err := url.Parse(request.URL)
+		if err != nil || address.Scheme != "https" || address.Hostname() == "" || address.User != nil || len(request.URL) > 4000 {
+			fail(w, 400, "Ungültiger Link.")
+			return
+		}
+		if err := openExternal(address.String()); err != nil {
+			fail(w, 500, "Der Link konnte nicht geöffnet werden.")
+			return
+		}
+		w.WriteHeader(204)
+	})
 	mux.HandleFunc("POST /api/exit", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(204)
 		select {
@@ -255,7 +273,7 @@ func serve(noLaunch bool, dataDir string) error {
 		if err != nil {
 			return err
 		}
-		dataDir = filepath.Join(base, product)
+		dataDir = filepath.Join(base, storageName)
 	}
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		return err
@@ -295,17 +313,10 @@ func serve(noLaunch bool, dataDir string) error {
 		<-a.exit
 		return nil
 	}
-	window, err := openWindow(localURL, dataDir)
-	if err != nil {
-		return err
-	}
 	updates, stopUpdates := context.WithCancel(context.Background())
 	result := make(chan string, 1)
 	go func() { result <- stageUpdate(updates) }()
-	select {
-	case <-a.exit:
-	case <-window:
-	}
+	windowErr := runWindow(localURL, dataDir, a.exit)
 	stopUpdates()
 	shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -317,7 +328,7 @@ func serve(noLaunch bool, dataDir string) error {
 		}
 	default:
 	}
-	return nil
+	return windowErr
 }
 
 func main() {

@@ -5,12 +5,12 @@ on:
     paths: [VERSION]
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: medienregal-release
   cancel-in-progress: false
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,13 +18,75 @@ jobs:
         with:
           go-version: '1.24.x'
           cache: false
-      - name: Prüfen und Installer bauen
+      - name: Installer bauen
         run: |
           sudo apt-get update
           sudo apt-get install -y nsis
           go vet ./...
           go test ./...
           bash build.sh "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-setup
+          path: dist/Medienregal-Setup-v*.exe
+          if-no-files-found: error
+  test-windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-setup
+      - name: Installation und Programmfenster prüfen
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem 'Medienregal-Setup-v*.exe' | Select-Object -First 1).FullName
+          $folder = Join-Path $env:RUNNER_TEMP 'Medatheke Windows Test'
+          $program = Join-Path $folder 'Medienregal.exe'
+          $uninstaller = Join-Path $folder 'Medienregal-Deinstallieren.exe'
+          $entry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal'
+          function Invoke-Setup([string[]]$Arguments) {
+            $process = Start-Process $setup -ArgumentList $Arguments -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Setup exit code $($process.ExitCode)" }
+          }
+          Invoke-Setup @('/S', "/D=$folder")
+          if ((Get-ItemProperty $entry).DisplayName -ne 'Medatheke by Maximilian') { throw 'Uninstall entry missing' }
+          if ((Get-Item $program).VersionInfo.FileDescription -ne 'Medatheke by Maximilian') { throw 'Program name missing' }
+          $app = Start-Process $program -PassThru
+          try {
+            $found = $false
+            foreach ($attempt in 1..40) {
+              Start-Sleep -Milliseconds 500
+              $app.Refresh()
+              if ($app.HasExited) { throw "Desktop app exited with code $($app.ExitCode)" }
+              $views = Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe' AND ParentProcessId = $($app.Id)"
+              if ($app.MainWindowTitle -eq 'Medatheke by Maximilian' -and $views) { $found = $true; break }
+            }
+            if (-not $found) { throw 'Native window with embedded WebView2 missing' }
+          } finally {
+            if (-not $app.HasExited) {
+              [void]$app.CloseMainWindow()
+              if (-not $app.WaitForExit(10000)) { Stop-Process -Id $app.Id -Force }
+            }
+          }
+          Invoke-Setup @('/S', '/UPDATE', "/D=$folder")
+          $removal = Start-Process $uninstaller -ArgumentList '/S' -Wait -PassThru
+          foreach ($attempt in 1..16) {
+            if (-not (Test-Path $program)) { break }
+            Start-Sleep -Milliseconds 500
+          }
+          if ((Test-Path $program) -or (Test-Path $entry)) { throw 'Uninstallation incomplete' }
+  publish:
+    needs: test-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-setup
+          path: dist
       - name: Neue Version veröffentlichen
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,4 +113,4 @@ jobs:
             exit 1
           fi
           gh release create "$tag" "dist/Medienregal-Setup-$tag.exe" --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "Medienregal $version" --generate-notes
+            --target "$GITHUB_SHA" --title "Medatheke by Maximilian $version" --generate-notes

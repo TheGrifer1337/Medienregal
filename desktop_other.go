@@ -9,7 +9,12 @@ import (
 
 func lockInstance() (func(), error) { return func() {}, nil }
 func showError(message string)      { fmt.Println(message) }
-func openWindow(address, _ string) (<-chan struct{}, error) {
-	return nil, exec.Command("xdg-open", address).Start()
+func runWindow(address, _ string, quit <-chan struct{}) error {
+	if err := openExternal(address); err != nil {
+		return err
+	}
+	<-quit
+	return nil
 }
-func applyUpdate(string) error { return nil }
+func openExternal(address string) error { return exec.Command("xdg-open", address).Start() }
+func applyUpdate(string) error          { return nil }

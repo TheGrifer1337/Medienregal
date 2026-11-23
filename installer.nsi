@@ -1,27 +1,30 @@
 Unicode true
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
-Name "Medienregal"
+Name "Medatheke by Maximilian"
 OutFile "${OUTFILE}"
 InstallDir "$LOCALAPPDATA\Programs\Medienregal"
 InstallDirRegKey HKCU "Software\Medienregal" "InstallPath"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 VIProductVersion "${VERSION}.0.0"
-VIAddVersionKey "ProductName" "Medienregal"
-VIAddVersionKey "FileDescription" "Medienregal – Windows-Installer"
+VIAddVersionKey "ProductName" "Medatheke by Maximilian"
+VIAddVersionKey "FileDescription" "Medatheke by Maximilian – Windows-Installer"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
-VIAddVersionKey "CompanyName" "Medienregal"
+VIAddVersionKey "CompanyName" "Maximilian"
 VIAddVersionKey "LegalCopyright" "Medienregal"
 
+!define MUI_ICON "winres/bookshelf.ico"
+!define MUI_UNICON "winres/bookshelf.ico"
 !define MUI_ABORTWARNING
+!define WEBVIEWKEY "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE VerifyDestination
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_RUN "$INSTDIR\Medienregal.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Medienregal öffnen"
+!define MUI_FINISHPAGE_RUN_TEXT "Medatheke öffnen"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -54,8 +57,32 @@ Function VerifyDestination
   done:
 FunctionEnd
 
-Section "Medienregal"
+Function DetectWebView
+  ReadRegStr $0 HKCU "${WEBVIEWKEY}" "pv"
+  StrCmp $0 "" localMissing
+  StrCmp $0 "0.0.0.0" localMissing detected
+  localMissing:
+    ReadRegStr $0 HKLM "${WEBVIEWKEY}" "pv"
+    StrCmp $0 "0.0.0.0" 0 detected
+    StrCpy $0 ""
+  detected:
+FunctionEnd
+
+Section "Medatheke by Maximilian"
   SetShellVarContext current
+  Call DetectWebView
+  StrCmp $0 "" 0 runtimeReady
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File "/oname=WebView2Bootstrapper.exe" "${BOOTSTRAPPER}"
+  ExecWait '"$PLUGINSDIR\WebView2Bootstrapper.exe" /silent /install' $1
+  Call DetectWebView
+  StrCmp $0 "" 0 runtimeReady
+  IfSilent +2
+    MessageBox MB_ICONSTOP "Microsoft WebView2 konnte nicht installiert werden. Prüfe deine Internetverbindung und starte den Installer erneut."
+  SetErrorLevel 3
+  Abort
+  runtimeReady:
   SetOutPath "$INSTDIR"
   ClearErrors
   File "/oname=Medienregal.neu" "${APPEXE}"
@@ -84,15 +111,16 @@ Section "Medienregal"
     IfErrors restoreAfterSwitch
     Delete "$INSTDIR\Medienregal.alt"
     WriteRegStr HKCU "Software\Medienregal" "InstallPath" "$INSTDIR"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "DisplayName" "Medienregal"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "DisplayName" "Medatheke by Maximilian"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "DisplayVersion" "${VERSION}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "DisplayIcon" "$INSTDIR\Medienregal.exe"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "Publisher" "Medienregal"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "Publisher" "Maximilian"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "InstallLocation" "$INSTDIR"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "UninstallString" '"$INSTDIR\Medienregal-Deinstallieren.exe"'
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "NoModify" 1
     WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal" "NoRepair" 1
-    CreateShortcut "$SMPROGRAMS\Medienregal.lnk" "$INSTDIR\Medienregal.exe"
+    Delete "$SMPROGRAMS\Medienregal.lnk"
+    CreateShortcut "$SMPROGRAMS\Medatheke by Maximilian.lnk" "$INSTDIR\Medienregal.exe"
     Goto done
   restoreAfterSwitch:
     Delete "$INSTDIR\Medienregal.exe"
@@ -116,6 +144,7 @@ Section "Uninstall"
   Delete "$INSTDIR\Medienregal.alt"
   Delete "$INSTDIR\Medienregal.neu"
   Delete "$SMPROGRAMS\Medienregal.lnk"
+  Delete "$SMPROGRAMS\Medatheke by Maximilian.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Medienregal"
   DeleteRegKey HKCU "Software\Medienregal"
   Delete "$INSTDIR\Medienregal-Deinstallieren.exe"
