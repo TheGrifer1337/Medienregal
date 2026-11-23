@@ -189,7 +189,7 @@ function render() {
   $('rating-gap').hidden=state.kind!=='movie';
   $('only-rating-gap').checked=state.onlyRatingGap===true;
   $('heading').textContent=info.title;
-  $('launcher-import').hidden=state.kind!=='game'||mobileMode();
+  $('launcher-import').hidden=state.kind!=='game';
   $('count').textContent=items.length+' '+(items.length===1?tr('gespeicherter Titel'):tr('gespeicherte Titel'));
   $('status-filters').replaceChildren(...[['',tr('Alle')],...Object.entries(info.states)].map(([value,label])=>{
     const node=button(label,()=>{ state.status=value; render(); });
@@ -356,7 +356,7 @@ function openSearch() {
   inner.append(form,results,button(tr('Manuell hinzufügen'),()=>openEditor({id:'manual:'+crypto.randomUUID(),kind,title:query.value.trim(),ratings:[0,0,0]}),'quiet'));
   inner.append(barcodeControls(inner,form,query,kind));
   if (kind==='movie'||kind==='series') inner.append(button(tr('Streamingverlauf importieren'),openHistory,'quiet search-import'));
-  if (kind==='game'&&!mobileMode()) inner.append(button(tr('Installierte Spiele importieren'),openLauncherImport,'quiet search-import'));
+  if (kind==='game') inner.append(button(tr('Installierte Spiele importieren'),openLauncherImport,'quiet search-import'));
   query.focus();
   form.addEventListener('submit',async event=>{
     event.preventDefault(); submit.disabled=true;
@@ -559,7 +559,7 @@ function openEditor(original) {
   if (existing) actions.append(button(tr('Entfernen'),async()=>{
     if (!confirm(tr('Diesen Titel aus deinem Regal entfernen?'))) return;
     try {
-      await api('entries','DELETE',{id:item.id,revision:item.revision});
+      await api('entries','DELETE',{id:item.id});
       await refreshCollection();modal.close();
       $('notice').textContent=tr('Titel entfernt. Über „Rückgängig“ kannst du ihn wiederherstellen.');
     } catch(error) { err.textContent=error.message; }
@@ -640,8 +640,8 @@ function openSettings() {
     button('Complete imported titles',()=>openEnrichment(),'quiet'));
   const credit=text('p','TV artwork from ','form-note');
   credit.append(link('https://www.tvmaze.com/','TVmaze'), ' · ',link('https://creativecommons.org/licenses/by-sa/4.0/','CC BY-SA'));
-  if (!mobileMode()) {inner.append(update.controls);update.refresh();}
-  inner.append(imports,credit);
+  inner.append(update.controls,imports,credit);
+  update.refresh();
   const form=text('form',null,'settings-form');
   const providers=providerPicker();
   const region=document.createElement('select');
@@ -724,12 +724,14 @@ $('exit').addEventListener('click',async()=>{
   window.close();
 });
 initChart();
-$('account').addEventListener('click',showAccount);
 $('export-list').addEventListener('click',showListExport);
 $('only-rating-gap').addEventListener('change',event=>{state.onlyRatingGap=event.target.checked;render();});
-startLibrary().catch(error=>{ $('notice').textContent=error.message; });
-document.addEventListener('visibilitychange',refreshOnlineLibrary);
-window.addEventListener('focus',refreshOnlineLibrary);
-window.addEventListener('online',refreshOnlineLibrary);
-setInterval(refreshOnlineLibrary,20000);
+Promise.all([api('collection'),api('settings'),api('goals')]).then(([data,prefs,goals])=>{
+  acceptCollection(data);
+  state.prefs=prefs;
+  state.goals=goals;
+  state.view=prefs.view||state.view;
+  applyLanguage();
+  render();
+}).catch(error=>{ $('notice').textContent=error.message; });
 setInterval(()=>{ if(state.prefs&&!modal.open&&!document.hidden) render(); },600000);

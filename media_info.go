@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -35,7 +36,7 @@ func (a *app) steamInfo(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]steamActivity{})
 		return
 	}
-	cacheKey := sessionHash(prefs.SteamUser + prefs.SteamKey)
+	cacheKey := sha256.Sum256([]byte(prefs.SteamUser + prefs.SteamKey))
 	if value, ok := steamActivities.Load(cacheKey); ok {
 		snapshot := value.(steamActivityCache)
 		if time.Now().Before(snapshot.Until) {

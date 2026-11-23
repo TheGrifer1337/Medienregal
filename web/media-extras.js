@@ -122,7 +122,7 @@ function movieTrailerPanel(item) {
 
 function playbackAction(item) {
   if (!isScreen(item) && item.kind!=='game') return null;
-  const control=button(item.kind==='game'?(mobileMode()?tr('Spielinfo'):tr('Spiel starten')):tr('Ansehen'),()=>{
+  const control=button(item.kind==='game'?tr('Spiel starten'):tr('Ansehen'),()=>{
     const inner=show(item.title);
     const note=advisoryPanel(item);
     inner.append(note);
@@ -136,11 +136,6 @@ function playbackAction(item) {
           loading.replaceWith(streamPanel(film));
         });
       } else loading.replaceWith(streamPanel(item));
-      return;
-    }
-    if (mobileMode()) {
-      const steam=catalogID(item).match(/^game:steam:(\d+)$/)?.[1];
-      if (steam) inner.append(link('https://store.steampowered.com/app/'+steam+'/',tr('Bei Steam ansehen')));
       return;
     }
     const error=text('p',null,'error playback-error');

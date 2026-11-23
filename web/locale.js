@@ -480,22 +480,6 @@ Object.assign(translations, {
 });
 
 Object.assign(translations,{
-  "Konto":["Account","账户"],
-  "Angemeldet als ":["Signed in as ","已登录："],
-  "Melde dich mit demselben Konto auf Windows und iPhone an.":["Sign in with the same account on Windows and iPhone.","请在 Windows 和 iPhone 上登录同一账户。"],
-  "Du kannst diesen PC als Kontoserver nutzen. Für den Zugriff vom iPhone brauchst du seine HTTPS-Adresse.":["You can host accounts on this PC. To connect from your iPhone, use its HTTPS address.","可以使用此电脑托管账户。iPhone 需要通过其 HTTPS 地址连接。"],
-  "Anleitung für das iPhone öffnen":["Open iPhone setup instructions","打开 iPhone 设置说明"],
-  "Einladungscode dieses Servers":["Invitation code for this server","此服务器的邀请码"],
-  "Kontoserver auf diesem PC starten":["Start account server on this PC","在此电脑启动账户服务器"],
-  "Abmelden":["Sign out","退出登录"],
-  "Anmelden":["Sign in","登录"],
-  "Konto erstellen":["Create account","创建账户"],
-  "Einladungscode":["Invitation code","邀请码"],
-  "Meine lokale Sammlung in ein leeres Konto kopieren":["Copy my local collection to an empty account","将本地收藏复制到空账户"],
-  "Serveradresse":["Server address","服务器地址"],
-  "Aktion":["Action","操作"],
-  "Benutzername":["Username","用户名"],
-  "Passwort":["Password","密码"],
   "Liste exportieren":["Export list","导出列表"],
   "IMDb-Abweichung ab 2 Punkten":["IMDb difference of 2+ points","与 IMDb 相差至少 2 分"],
   " Std. auf Steam":[" hours on Steam"," 小时 Steam 游戏时间"],
@@ -516,24 +500,5 @@ Object.assign(translations,{
   "Ergänze Genres oder Buchautoren bei deinen Favoriten, um passende Titel zu finden.":["Add genres or book authors to favorites to find matches.","为收藏添加类型或作者即可查找推荐。"],
   "Gerade keine passenden neuen Titel gefunden.":["No matching new titles found right now.","暂未找到合适的新条目。"],
   "Aus deinen Favoriten und Bewertungen: ":["From your favorites and ratings: ","根据你的收藏与评分："],
-  "Empfehlungen sind gerade nicht verfügbar.":["Recommendations are temporarily unavailable.","推荐暂不可用。"],
-  "Bei Steam ansehen":["View on Steam","在 Steam 查看"],
-  "Spielinfo":["Game information","游戏信息"],
-  "Melde dich zuerst an.":["Sign in first.","请先登录。"],
-  "Benutzername oder Passwort hat kein gültiges Format.":["Username or password format is invalid.","用户名或密码格式无效。"],
-  "Benutzername oder Passwort ist falsch.":["The username or password is incorrect.","用户名或密码错误。"],
-  "Der Einladungscode ist ungültig.":["The invitation code is invalid.","邀请码无效。"],
-  "Dieser Benutzername ist bereits vergeben.":["This username is already taken.","此用户名已被使用。"],
-  "Dieser Titel wurde auf einem anderen Gerät geändert. Öffne ihn erneut.":["This title was changed on another device. Reopen it to continue.","此条目已在其他设备修改。请重新打开。"],
-  "Der Kontoserver ist nicht erreichbar.":["The account server is unreachable.","无法连接账户服务器。"],
-  "Der Kontoserver konnte nicht gestartet werden. Prüfe Port 8765.":["The account server could not start. Check port 8765.","无法启动账户服务器。请检查端口 8765。"],
-  "Das Konto enthält bereits Daten. Die lokale Sammlung wurde nicht verändert.":["The account already contains data. The local collection was left intact.","账户已有数据。本地收藏未更改。"],
-});
-
-Object.assign(translations,{
-  "Änderungen warten auf den Server":["changes are waiting for the server","项更改等待同步"],
-  "Keine offenen Änderungen":["No pending changes","没有待同步的更改"],
-  "Titel wurde am Server gelöscht":["Title was deleted on the server","服务器上的条目已删除"],
-  "Meine Änderung anwenden":["Keep my change","应用我的更改"],
-  "Serverstand übernehmen":["Use server version","使用服务器版本"]
+  "Empfehlungen sind gerade nicht verfügbar.":["Recommendations are temporarily unavailable.","推荐暂不可用。"]
 });

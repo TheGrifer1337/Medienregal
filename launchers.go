@@ -285,29 +285,8 @@ func (a *app) previewLaunchers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
-	connection := a.remote
-	entries := a.data.Entries
-	a.mu.Unlock()
-	if connection.Token != "" {
-		entries = nil
-		response, err := accountCall(r.Context(), connection, http.MethodGet, "/api/entries", nil, "")
-		if err != nil {
-			fail(w, 502, "Der Kontoserver ist nicht erreichbar.")
-			return
-		}
-		defer response.Body.Close()
-		if response.StatusCode != 200 {
-			copyAccountResponse(w, response)
-			return
-		}
-		if json.NewDecoder(io.LimitReader(response.Body, 32*1024*1024)).Decode(&entries) != nil {
-			fail(w, 502, "Die Sammlung konnte nicht geöffnet werden.")
-			return
-		}
-	}
-	a.mu.Lock()
 	defer a.mu.Unlock()
-	known := knownLauncherGames(entries)
+	known := knownLauncherGames(a.data.Entries)
 	a.launcherGames = make(map[string]entry, len(items))
 	type candidate struct {
 		entry
@@ -331,7 +310,6 @@ func (a *app) importLaunchers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.mu.Lock()
-	connection := a.remote
 	items := make([]entry, 0, len(request.IDs))
 	for _, id := range request.IDs {
 		item, ok := a.launcherGames[id]
@@ -344,43 +322,6 @@ func (a *app) importLaunchers(w http.ResponseWriter, r *http.Request) {
 		items = append(items, item)
 	}
 	a.mu.Unlock()
-	if connection.Token != "" {
-		payload, err := json.Marshal(items)
-		if err != nil {
-			fail(w, 400, "Die Auswahl konnte nicht gespeichert werden.")
-			return
-		}
-		response, err := accountCall(r.Context(), connection, http.MethodPut, "/api/account/installed-games", bytes.NewReader(payload), "application/json")
-		if err != nil {
-			fail(w, 502, "Der Kontoserver ist nicht erreichbar.")
-			return
-		}
-		defer response.Body.Close()
-		copyAccountResponse(w, response)
-		return
-	}
-	a.saveLauncherSelection(w, items)
-}
-
-func (a *app) importAccountGames(w http.ResponseWriter, r *http.Request) {
-	if !a.hosted {
-		http.NotFound(w, r)
-		return
-	}
-	var items []entry
-	if !decodeLimited(w, r, &items, 4*1024*1024) {
-		return
-	}
-	if len(items) == 0 || len(items) > 4000 {
-		fail(w, 400, "Wähle zwischen 1 und 4.000 Spielen zum Import aus.")
-		return
-	}
-	for _, item := range items {
-		if item.Kind != "game" || item.Status != "library" || !valid(item) {
-			fail(w, 400, "Wähle gültige Titel für den Import aus.")
-			return
-		}
-	}
 	a.saveLauncherSelection(w, items)
 }
 

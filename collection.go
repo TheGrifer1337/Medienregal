@@ -114,7 +114,6 @@ func findEntry(entries []entry, id string) *entry {
 }
 
 func equalEntry(a, b entry) bool {
-	a.Revision, b.Revision = "", ""
 	left, _ := json.Marshal(a)
 	right, _ := json.Marshal(b)
 	return bytes.Equal(left, right)

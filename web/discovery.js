@@ -103,15 +103,11 @@ function showListExport() {
     save.disabled=!items.length;
   };
   const preview=text('p',null,'form-note');
-  const save=button(tr('HTML-Datei herunterladen'),async()=>{
+  const save=button(tr('HTML-Datei herunterladen'),()=>{
     const list=picker.value;
     const name=list||current().title;
     const items=(list?state.entries.filter(item=>item.lists?.includes(list)):state.entries.filter(item=>item.kind===state.kind)).sort(compare);
     const file=new File([listExportDocument(name,items)],(name.replace(/[^\p{L}\p{N}_-]+/gu,'-')||'Mediathek')+'.html',{type:'text/html'});
-    if (mobileMode() && navigator.canShare?.({files:[file]})) {
-      try { await navigator.share({files:[file],title:name});return; }
-      catch(e) { if (e.name==='AbortError') return; }
-    }
     const url=URL.createObjectURL(file);
     const anchor=document.createElement('a');
     anchor.href=url;anchor.download=file.name;inner.append(anchor);anchor.click();anchor.remove();

@@ -32,8 +32,8 @@ var version = "1.0"
 var assets embed.FS
 
 type entry struct {
-	ID            string     `json:"id"`
-	Revision      string     `json:"revision,omitempty"`
+	ID string `json:"id"`
+
 	Kind          string     `json:"kind"`
 	Title         string     `json:"title"`
 	Subtitle      string     `json:"subtitle,omitempty"`
@@ -73,7 +73,6 @@ type settings struct {
 }
 
 type library struct {
-	SyncReceipts      []string               `json:"syncReceipts,omitempty"`
 	Entries           []entry                `json:"entries"`
 	Settings          settings               `json:"settings"`
 	Goals             map[int]map[string]int `json:"goals,omitempty"`
@@ -83,21 +82,15 @@ type library struct {
 }
 
 type app struct {
-	syncDeviceMu   sync.Mutex
-	mu             sync.Mutex
-	path           string
-	data           library
-	token          string
-	exit           chan struct{}
-	update         updateCheck
-	lifetime       context.Context
-	fullscreen     chan bool
-	launcherGames  map[string]entry
-	hosted         bool
-	remote         desktopAccount
-	host           *accountHost
-	hostHTTP       *http.Server
-	accountActions sync.Mutex
+	mu            sync.Mutex
+	path          string
+	data          library
+	token         string
+	exit          chan struct{}
+	update        updateCheck
+	lifetime      context.Context
+	fullscreen    chan bool
+	launcherGames map[string]entry
 }
 
 var statuses = map[string][]string{
@@ -121,10 +114,6 @@ func readLibrary(path string) (library, error) {
 }
 
 func writeLibrary(path string, data library) error {
-	return writeJSON(path, data)
-}
-
-func writeJSON(path string, data any) error {
 	file, err := os.CreateTemp(filepath.Dir(path), "regal-*.tmp")
 	if err != nil {
 		return err
@@ -212,10 +201,6 @@ func (a *app) entries(w http.ResponseWriter, r *http.Request) {
 		next := a.data
 		previous := findEntry(next.Entries, item.ID)
 		if previous != nil {
-			if a.hosted && previous.Revision != item.Revision {
-				fail(w, 409, "Dieser Titel wurde auf einem anderen Gerät geändert. Öffne ihn erneut.")
-				return
-			}
 			next.Entries = replaceEntries(next.Entries, []entry{*previous}, nil)
 			next.Undo = &collectionUndo{Before: []entry{*previous}, Label: "Titel entfernt"}
 		}
@@ -224,18 +209,10 @@ func (a *app) entries(w http.ResponseWriter, r *http.Request) {
 	}
 	next := a.data
 	previous := findEntry(next.Entries, item.ID)
-	if a.hosted && previous == nil && item.Revision != "" {
-		fail(w, 409, "Dieser Titel wurde auf einem anderen Gerät geändert. Öffne ihn erneut.")
-		return
-	}
 	item.Lists = canonicalLists(item.Lists, next.Lists)
 	setCompletion(&item, previous)
 	var before []entry
 	if previous != nil {
-		if a.hosted && previous.Revision != item.Revision {
-			fail(w, 409, "Dieser Titel wurde auf einem anderen Gerät geändert. Öffne ihn erneut.")
-			return
-		}
 		if equalEntry(*previous, item) {
 			reply(w, 200, true)
 			return
@@ -250,27 +227,8 @@ func (a *app) entries(w http.ResponseWriter, r *http.Request) {
 	a.commit(w, next)
 }
 
-// persist is called while a.mu is held. Hosted edits carry revision checks for title forms.
+// persist is called while a.mu is held.
 func (a *app) persist(next library) error {
-	if a.hosted {
-		previous := make(map[string]entry, len(a.data.Entries))
-		for _, item := range a.data.Entries {
-			previous[item.ID] = item
-		}
-		next.Entries = append([]entry{}, next.Entries...)
-		for i, item := range next.Entries {
-			old, ok := previous[item.ID]
-			if ok && equalEntry(old, item) {
-				next.Entries[i].Revision = old.Revision
-				continue
-			}
-			revision, err := randomToken()
-			if err != nil {
-				return err
-			}
-			next.Entries[i].Revision = revision
-		}
-	}
 	if err := writeLibrary(a.path, next); err != nil {
 		return err
 	}
@@ -382,18 +340,14 @@ func (a *app) getSettings() settings {
 	return a.data.Settings
 }
 
-var accountWeb = func() http.Handler {
+var desktopWeb = func() http.Handler {
 	web, _ := fs.Sub(assets, "web")
 	return http.FileServerFS(web)
 }()
 
 func (a *app) routes() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/account", a.desktopAccount)
-	mux.HandleFunc("POST /api/account", a.desktopAccount)
-	mux.HandleFunc("PUT /api/account/import", a.importLocalLibrary)
-	mux.HandleFunc("PUT /api/account/installed-games", a.importAccountGames)
-	mux.HandleFunc("POST /api/sync", a.syncCollection)
+
 	mux.HandleFunc("GET /api/entries", a.entries)
 	mux.HandleFunc("PUT /api/entries", a.entries)
 	mux.HandleFunc("DELETE /api/entries", a.entries)
@@ -469,8 +423,15 @@ func (a *app) routes() *http.ServeMux {
 		default:
 		}
 	})
-	mux.Handle("GET /", accountWeb)
+	mux.Handle("GET /", desktopWeb)
 	return mux
+}
+
+func desktopHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 }
 
 func serve(noLaunch bool, dataDir string) error {
@@ -504,25 +465,13 @@ func serve(noLaunch bool, dataDir string) error {
 		update: updateCheck{status: updateStatus{State: "idle"}}}
 	address := listener.Addr().String()
 	localURL := "http://" + address + "/" + a.token + "/"
-	a.remote = readDesktopAccount(dataDir)
-	if _, err := os.Stat(filepath.Join(dataDir, "account-host.enabled")); err == nil {
-		a.host, a.hostHTTP, _ = listenAccountHost(filepath.Join(dataDir, "Kontoserver"))
-	}
-	defer func() {
-		a.mu.Lock()
-		hostHTTP := a.hostHTTP
-		a.mu.Unlock()
-		if hostHTTP != nil {
-			_ = hostHTTP.Close()
-		}
-	}()
-	mux := http.StripPrefix("/"+a.token, a.withAccountProxy(a.routes()))
+	mux := http.StripPrefix("/"+a.token, a.routes())
 	server := &http.Server{ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 35 * time.Second, Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != address || !strings.HasPrefix(r.URL.Path, "/"+a.token+"/") || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != "http://"+address) {
 			http.NotFound(w, r)
 			return
 		}
-		accountHeaders(w)
+		desktopHeaders(w)
 		mux.ServeHTTP(w, r)
 	})}
 	go server.Serve(listener)
@@ -546,28 +495,7 @@ func serve(noLaunch bool, dataDir string) error {
 func main() {
 	noLaunch := flag.Bool("serve", false, "Start local test server without opening a window")
 	dataDir := flag.String("data", "", "Path for personal data")
-	hostAccounts := flag.Bool("account-host", false, "Serve Mediathek accounts")
-	accountListen := flag.String("account-listen", accountPort, "Listen address for standalone account host")
 	flag.Parse()
-	if *hostAccounts {
-		folder := *dataDir
-		if folder == "" {
-			base, err := os.UserConfigDir()
-			if err != nil {
-				showError(err.Error())
-				return
-			}
-			folder = filepath.Join(base, storageName, "Kontoserver")
-		}
-		_, server, err := listenAccountHostAt(folder, *accountListen)
-		if err != nil {
-			showError(err.Error())
-			return
-		}
-		defer server.Close()
-		log.Printf("Mediathek account server: http://%s/ (invite: %s)", *accountListen, filepath.Join(folder, "invite.txt"))
-		select {}
-	}
 	if !*noLaunch {
 		release, err := lockInstance()
 		if err != nil {

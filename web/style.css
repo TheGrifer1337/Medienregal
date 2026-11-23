@@ -255,9 +255,8 @@ body[data-category=game] .series-scene{opacity:.88;transform:none}
 .recommendation-item span:last-child {overflow-wrap:anywhere}
 .side-by-side-scores {display:flex;gap:.35rem .7rem;align-items:center;flex-wrap:wrap;margin-top:.3rem}
 .steam-activity {display:block;margin-top:.35rem}
-.advisory-panel,.account-server {margin:.65rem 0;padding:.8rem;border:1px solid var(--border);border-radius:10px;background:var(--panel)}
+.advisory-panel {margin:.65rem 0;padding:.8rem;border:1px solid var(--border);border-radius:10px;background:var(--panel)}
 .advisory-panel p {margin:.3rem 0}
-.account-server input {width:100%}
 #rating-gap {display:flex;align-items:center;gap:.35rem}
 .filter-status {grid-column:1/-1}
 .card.gap-excluded {display:none}
@@ -271,6 +270,4 @@ body[data-category=game] .series-scene{opacity:.88;transform:none}
   .top-actions {flex-wrap:wrap}
   .top-actions button {min-height:42px}
   .top-inner {grid-template-columns:minmax(0,1fr) auto}
-  body[data-platform=web] .annual-chart {padding-bottom:env(safe-area-inset-bottom)}
-  body[data-platform=web] .settings-form input, body[data-platform=web] .settings-form select {font-size:16px}
 }
