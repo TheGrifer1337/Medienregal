@@ -33,7 +33,7 @@ func historyID(item historyTitle) string {
 }
 
 func uneditedHistoryTitle(item entry) bool {
-	return !item.ImportEdited && item.Status == historyStatus(item.Kind) &&
+	return !item.ImportEdited && !item.Favorite && item.CustomCover == "" && item.Status == historyStatus(item.Kind) &&
 		item.ID == historyID(historyTitle{Title: item.Title, Kind: item.Kind}) &&
 		(item.CatalogID != "" || (item.Subtitle == "" && item.Cover == "" && len(item.Genres) == 0 && item.Total == 0)) &&
 		item.Progress == 0 && item.Notes == "" && len(item.Lists) == 0 && item.Ratings == [3]int{}

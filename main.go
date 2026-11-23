@@ -37,6 +37,8 @@ type entry struct {
 	Title         string   `json:"title"`
 	Subtitle      string   `json:"subtitle,omitempty"`
 	Cover         string   `json:"cover,omitempty"`
+	CustomCover   string   `json:"customCover,omitempty"`
+	Favorite      bool     `json:"favorite,omitempty"`
 	Genres        []string `json:"genres,omitempty"`
 	Total         int      `json:"total"`
 	Progress      int      `json:"progress"`
@@ -83,6 +85,7 @@ var statuses = map[string][]string{
 	"movie":  {"seen", "want", "started"},
 	"series": {"seen", "started", "want"},
 	"book":   {"read", "started", "finished", "want"},
+	"game":   {"started", "finished", "want"},
 }
 
 func readLibrary(path string) (library, error) {
@@ -122,7 +125,7 @@ func valid(item entry) bool {
 	if item.ID == "" || len(item.ID) > 200 || strings.TrimSpace(item.Title) == "" || len(item.Title) > 600 {
 		return false
 	}
-	if len(item.Notes) > 16000 || len(item.Lists) > 100 || len(item.Description) > 20000 {
+	if len(item.Notes) > 16000 || len(item.Lists) > 100 || len(item.Description) > 20000 || !validCustomCover(item.CustomCover) {
 		return false
 	}
 	if item.Total < 0 || item.Progress < 0 || (item.Total > 0 && item.Progress > item.Total) {
@@ -152,7 +155,11 @@ func fail(w http.ResponseWriter, code int, message string) {
 }
 
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128*1024))
+	return decodeLimited(w, r, target, 128*1024)
+}
+
+func decodeLimited(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	if err := decoder.Decode(target); err != nil || decoder.Decode(new(any)) != io.EOF {
 		fail(w, 400, "Die Eingabe konnte nicht gelesen werden.")
 		return false
@@ -168,7 +175,7 @@ func (a *app) entries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var item entry
-	if !decode(w, r, &item) {
+	if !decodeLimited(w, r, &item, 512*1024) {
 		return
 	}
 	if r.Method == "PUT" && !valid(item) {
@@ -218,7 +225,7 @@ func (a *app) preferences(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if r.Method == "GET" {
-		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers, "view": a.data.Settings.View})
+		reply(w, 200, map[string]any{"version": version, "region": a.data.Settings.Region, "hasTmdb": a.data.Settings.TMDB != "", "hasWatchmode": a.data.Settings.Watchmode != "", "providers": a.data.Settings.Providers, "view": a.data.Settings.View, "chartGenres": chartGenreOptions()})
 		return
 	}
 	var request struct {
@@ -291,6 +298,7 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/details", a.details)
 	mux.HandleFunc("GET /api/streaming", a.streaming)
 	mux.HandleFunc("GET /api/collection", a.collection)
+	mux.HandleFunc("PUT /api/collection/favorite", a.favoriteEntry)
 	mux.HandleFunc("PUT /api/lists", a.customList)
 	mux.HandleFunc("PUT /api/view", a.collectionView)
 	mux.HandleFunc("POST /api/collection/undo", a.undoCollection)
@@ -388,7 +396,7 @@ func serve(noLaunch bool, dataDir string) error {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' https: data:; style-src 'self'; script-src 'self'; object-src 'none'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		mux.ServeHTTP(w, r)
 	})}
 	go server.Serve(listener)

@@ -26,6 +26,10 @@ Titel können mehreren **eigenen Listen** angehören und persönliche Notizen sp
 
 Die durchlaufende Jahresliste erscheint bei Filmen, Serien und Büchern. Sie zeigt bis zu 50 Treffer, geordnet nach der jeweiligen Katalogquelle. Die Liste für Filme und Serien nutzt TMDB bei eingerichtetem Zugang, sonst Cinemeta, Wikidata oder IMDbAPI. Bei Wikidata bestimmt die Anzahl verknüpfter Artikel die Reihenfolge. Bücher werden nach den Leselisten von Open Library gereiht. Verfügbare YouTube-Trailer starten in der Film- oder Serienvorschau. Beim Schließen wird der Player beendet. Ein Titel wird erst durch Antippen eines Status gespeichert.
 
+Im Reiter **Spiele** kannst du Titel über Steam suchen oder selbst anlegen. Spiele lassen sich nach **Qualität**, **Gameplay** und **Storyline** bewerten. Die Spielecharts verwenden Wikidata oder die neuesten Veröffentlichungen auf Steam. Die Quelle steht an der Leiste.
+
+Mit **Chart-Genre** kannst du die Jahresliste auf ein Genre eingrenzen. Beim Start und beim Wechsel des Medienbereichs werden zuerst alle Genres gezeigt. Die sichtbare Jahresliste lädt nach Ablauf ihres Zwischenspeichers erneut, sobald sie frei sichtbar ist. Eigene Listen sind direkt als Filter sichtbar. Das Herz auf jeder Titelkarte markiert Favoriten. Über **Eigenes Cover** im Titeldialog kannst du eine lokale Bilddatei oder HTTPS-Bildadresse wählen und später zur Kataloggrafik zurückkehren.
+
 ## Windows-Installer und Veröffentlichungen
 
 Voraussetzungen für den lokalen Build unter Linux sind Go ab 1.23, Bash, cURL und NSIS.

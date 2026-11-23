@@ -68,7 +68,7 @@ function providerPicker() {
 
 function providerFilter() {
   const filter=$('provider-filter');
-  const show=state.kind!=='book' && state.status==='want' && state.prefs?.providers?.length>0;
+  const show=(state.kind==='movie'||state.kind==='series') && state.status==='want' && state.prefs?.providers?.length>0;
   filter.hidden=!show;
   const subscription=$('subscription-filter');
   subscription.hidden=!show;

@@ -304,6 +304,8 @@ func (a *app) search(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case kind == "book":
 		items, err = combinedBooks(r.Context(), params)
+	case kind == "game":
+		items, err = searchGames(r.Context(), query, prefs.Region)
 	case prefs.TMDB != "":
 		items, err = searchTMDB(r.Context(), kind, query, prefs.TMDB)
 		if err != nil || len(items) == 0 {
@@ -335,6 +337,10 @@ func (a *app) details(w http.ResponseWriter, r *http.Request) {
 	withTrailer := r.URL.Query().Get("trailer") == "1"
 	err := errors.New("Kein Katalogeintrag")
 	switch {
+	case kind == "game" && source == "wikidata" && wikidataID.MatchString(key):
+		found, err = wikidataGame(ctx, key)
+	case kind == "game" && source == "steam" && numericID.MatchString(key):
+		found, err = steamGame(ctx, key, a.getSettings().Region)
 	case source == "imdb" && imdbID.MatchString(key) && (kind == "movie" || kind == "series"):
 		var payload struct{ Meta cinemeta }
 		err = getJSON(ctx, "https://v3-cinemeta.strem.io/meta/"+kind+"/"+key+".json", "", &payload)

@@ -1,7 +1,7 @@
 'use strict';
 
 const charts = new Map();
-const ticker = {kind:'',animation:null,generation:0,hovered:false,paused:matchMedia('(prefers-reduced-motion: reduce)').matches};
+const ticker = {kind:'',genre:'',key:'',animation:null,generation:0,hovered:false,paused:matchMedia('(prefers-reduced-motion: reduce)').matches};
 const catalogID = item => item.catalogId||item.id;
 
 function syncTicker() {
@@ -14,26 +14,37 @@ function annualChart() {
   const panel=$('annual-chart');
   panel.hidden=state.kind==='stats';
   if (panel.hidden) { syncTicker();return; }
-  if (ticker.kind===state.kind) { syncTicker();return; }
-  ticker.kind=state.kind;
+  const kind=state.kind;
+  const genreControl=$('chart-genre');
+  if (ticker.kind!==kind) {
+    ticker.kind=kind;
+    ticker.genre='';
+    const genres=[...(state.prefs?.chartGenres?.[kind]||[])].sort(collator.compare);
+    genreControl.replaceChildren(option('','Alle Genres'),...genres.map(genre=>option(genre,genre)));
+  }
+  const year=new Date().getFullYear();
+  const key=JSON.stringify([kind,ticker.genre,year]);
+  if (ticker.key===key) { syncTicker();return; }
+  ticker.key=key;
   const generation=++ticker.generation;
   ticker.animation?.cancel();
   ticker.animation=null;
-  const kind=state.kind;
-  const year=new Date().getFullYear();
-  $('chart-title').textContent='Top 50 · '+year;
+  const genre=ticker.genre;
+  const chartTitle=count=>'Top '+count+' · '+(genre?genre+' · ':'')+year;
+  $('chart-title').textContent=chartTitle(50);
   $('chart-source').textContent='Lädt …';
   const track=$('chart-track');
   track.replaceChildren();
   $('chart-frame').scrollLeft=0;
-  let pending=charts.get(kind);
-  if (!pending) {
-    pending=api(route('rankings',{kind}));
-    charts.set(kind,pending);
+  let cached=charts.get(key);
+  if (!cached || cached.expires<=Date.now()) {
+    cached={request:api(route('rankings',{kind,genre})),expires:Date.now()+40*60*1000};
+    charts.set(key,cached);
   }
-  pending.then(data=>{
+  cached.request.then(data=>{
     if (state.kind!==kind || generation!==ticker.generation) return;
-    $('chart-title').textContent='Top '+data.items.length+' · '+data.year;
+    $('chart-title').textContent=data.items.length?chartTitle(data.items.length):'Jahrescharts · '+year;
+    if (!data.items.length) { $('chart-source').textContent='Keine Treffer für '+(genre||'dieses Jahr');return; }
     $('chart-source').textContent=data.source;
     const createStrip=clone=>{
       const strip=text('div',null,'chart-strip');
@@ -57,17 +68,22 @@ function annualChart() {
       syncTicker();
     }
   }).catch(()=>{
-    charts.delete(kind);
+    if(charts.get(key)===cached) charts.delete(key);
     if (state.kind!==kind || generation!==ticker.generation) return;
     $('chart-source').textContent='Jahresliste gerade nicht verfügbar';
-    const retry=button('Erneut laden',()=>{ticker.kind='';annualChart();},'quiet');
+    const retry=button('Erneut laden',()=>{ticker.key='';annualChart();},'quiet');
     track.append(retry);
-    if (kind!=='book'&&!state.prefs?.hasTmdb) track.append(text('span','TMDB ist eine weitere Quelle in den Einstellungen.','form-note'));
+    if ((kind==='movie'||kind==='series')&&!state.prefs?.hasTmdb) track.append(text('span','TMDB ist eine weitere Quelle in den Einstellungen.','form-note'));
   });
 }
 
 function initChart() {
   const pause=$('chart-pause');
+  $('chart-genre').addEventListener('change',event=>{ ticker.genre=event.target.value;annualChart(); });
+  setInterval(()=>{
+    if (modal.open||document.hidden||ticker.hovered||$('annual-chart').hidden) return;
+    if (charts.get(ticker.key)?.expires<=Date.now()) { ticker.key='';annualChart(); }
+  },60000);
   const syncPauseButton=()=>{
     pause.textContent=ticker.paused?'Abspielen':'Pausieren';
     pause.setAttribute('aria-pressed',String(ticker.paused));
@@ -77,7 +93,7 @@ function initChart() {
     ticker.paused=!ticker.paused;syncPauseButton();
     if (!ticker.paused) {
       $('chart-frame').scrollLeft=0;
-      if (!ticker.animation && $('chart-track').children.length) { ticker.kind='';annualChart(); }
+      if (!ticker.animation && $('chart-track').children.length) { ticker.key='';annualChart(); }
     }
     syncTicker();
   });
@@ -123,24 +139,26 @@ function trailerPlayer(id,title) {
 
 async function openRankedTitle(initial) {
   const inner=show(initial.title);
+  const existing=state.entries.find(item=>catalogID(item)===initial.id);
   const titleCard=text('div',null,'ranking-detail');
   const info=text('div');
   const description=text('p',initial.description||'Kurzbeschreibung wird geladen …','ranking-description');
   const genres=text('p',genreLabels(initial.kind,initial.genres||[]).join(' · '),'form-note');
   info.append(text('p',initial.subtitle,'muted'),genres,description);
-  titleCard.append(cover(initial),info);
+  titleCard.append(cover({...initial,customCover:existing?.customCover}),info);
   inner.append(titleCard);
   const player=text('div',null,'ranking-player');
-  const film=initial.kind!=='book';
+  const film=isScreen(initial);
   if (film) player.append(text('p','Trailer wird gesucht …','form-note'));
   inner.append(player);
   const actions=text('div',null,'dialog-actions ranking-actions');
   const error=text('p',null,'error form-error');
   error.setAttribute('role','alert');
-  const existing=state.entries.find(item=>catalogID(item)===initial.id);
   let item=initial;
   const states=film?[
     ['seen','Schon gesehen'],['want','Möchte ich sehen'],['started','Gerade dabei']
+  ]:initial.kind==='game'?[
+    ['finished','Schon durchgespielt'],['want','Möchte ich spielen'],['started','Spiele ich gerade']
   ]:[
     ['finished','Schon gelesen'],['want','Möchte ich lesen'],['started','Lese ich gerade']
   ];

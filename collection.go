@@ -138,7 +138,7 @@ func replaceEntries(entries, before, after []entry) []entry {
 }
 
 func completed(item entry) bool {
-	return item.Status == "seen" || (item.Kind == "book" && (item.Status == "finished" || item.Status == "read"))
+	return item.Status == "seen" || item.Status == "finished" || (item.Kind == "book" && item.Status == "read")
 }
 
 func setCompletion(item *entry, old *entry) {
@@ -207,6 +207,10 @@ func (a *app) mergeCollection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item := *left
+	item.Favorite = left.Favorite || right.Favorite
+	if item.CustomCover == "" {
+		item.CustomCover = right.CustomCover
+	}
 	item.Ratings = rating.Ratings
 	item.Progress, item.Total = progress.Progress, progress.Total
 	item.Status, item.CompletedYear = status.Status, status.CompletedYear
@@ -303,4 +307,34 @@ func screenCatalogID(id, kind string) bool {
 	parts := strings.Split(id, ":")
 	return (kind == "movie" || kind == "series") && len(parts) == 3 && parts[0] == kind &&
 		((parts[1] == "imdb" && imdbID.MatchString(parts[2])) || (parts[1] == "tmdb" && numericID.MatchString(parts[2])))
+}
+
+func (a *app) favoriteEntry(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		ID       string
+		Favorite bool
+	}
+	if !decode(w, r, &request) {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	old := findEntry(a.data.Entries, request.ID)
+	if old == nil {
+		fail(w, 404, "Der Titel ist nicht mehr in deiner Sammlung.")
+		return
+	}
+	if old.Favorite == request.Favorite {
+		reply(w, 200, a.collectionState())
+		return
+	}
+	item := *old
+	item.Favorite = request.Favorite
+	if item.Source == "Streamingverlauf" {
+		item.ImportEdited = true
+	}
+	next := a.data
+	next.Entries = replaceEntries(next.Entries, []entry{*old}, []entry{item})
+	next.Undo = &collectionUndo{Before: []entry{*old}, After: []entry{item}, Label: "Favorit geändert"}
+	a.saveCollection(w, next)
 }

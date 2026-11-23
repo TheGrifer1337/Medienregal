@@ -3,10 +3,11 @@
 const definitions = {
   movie: { title:'Filme', singular:'Film', icon:'▤', states:{ seen:'Angesehen', want:'Möchte ich sehen', started:'Angefangen' } },
   series: { title:'Serien', singular:'Serie', icon:'▣', unit:'Folgen', states:{ seen:'Gesehen', started:'Angefangen', want:'Möchte ich sehen' } },
-  book: { title:'Bücher', singular:'Buch', icon:'▥', unit:'Seiten', states:{ read:'Gelesen', started:'Angefangen', finished:'Beendet', want:'Möchte ich lesen' } }
+  book: { title:'Bücher', singular:'Buch', icon:'▥', unit:'Seiten', states:{ read:'Gelesen', started:'Angefangen', finished:'Beendet', want:'Möchte ich lesen' } },
+  game:{ title:'Spiele',singular:'Spiel',icon:'🎮',states:{want:'Möchte ich spielen',started:'Spiele ich gerade',finished:'Durchgespielt'} }
 };
-const ratings = { screen:['Qualität','Storyline','Allgemein'], book:['Storyline','Charakterentwicklung','Schreibstil'] };
-const state = { kind:'movie', entries:[], status:'', genre:'', sort:'title', onlyProviders:false, onlySubscriptions:false, lists:[], list:'', view:'large', undo:'', statsYear:'', prefs:null, streamCache:new Map(), streamJobs:[], activeJobs:0 };
+const ratings = { game:['Qualität','Gameplay','Storyline'], screen:['Qualität','Storyline','Allgemein'], book:['Storyline','Charakterentwicklung','Schreibstil'] };
+const state = { kind:'movie', entries:[], status:'', genre:'', onlyFavorites:false, sort:'title', onlyProviders:false, onlySubscriptions:false, lists:[], list:'', view:'large', undo:'', statsYear:'', prefs:null, streamCache:new Map(), streamJobs:[], activeJobs:0 };
 const $ = id => document.getElementById(id);
 const modal = $('modal');
 const modalBody = $('modal-body');
@@ -21,6 +22,7 @@ const screenGenres = [
 const genrePresets = {
   movie:[...screenGenres,'Musical','Kurzfilm'],
   series:[...screenGenres,'Kinderserie','Reality-TV','Sitcom','Soap','Talkshow'],
+  game:['Abenteuer','Action','Horror','Indie','Jump ’n’ Run','Mehrspieler','Puzzle','Rennspiel','Rollenspiel','Shooter','Simulation','Sport','Strategie'],
   book:[
     'Abenteuer','Autobiografie','Belletristik','Biografie','Bilderbuch','Comic','Dark Romance',
     'Drama','Dystopie','Fachbuch','Fantasy','Graphic Novel','Historischer Roman','Horror',
@@ -32,7 +34,7 @@ const genrePresets = {
 const genreAliases = new Map([
   ['adventure','Abenteuer'],['comedy','Komödie'],['komoedie','Komödie'],['crime','Krimi'],
   ['documentary','Dokumentation'],['doku','Dokumentation'],['romance','Romantik'],
-  ['science fiction','Sci-Fi'],['sci fi','Sci-Fi'],['family','Familie'],['history','Historisch'],
+  ['science fiction','Sci-Fi'],['sci fi','Sci-Fi'],['family','Familie'],['history','Historisch'],['rpg','Rollenspiel'],['racing','Rennspiel'],['strategy','Strategie'],['sports','Sport'],['platformer','Jump ’n’ Run'],
   ['music','Musik'],['war','Krieg'],['supernatural','Übernatürlich'],['graphic novels','Graphic Novel'],
   ['dark romence','Dark Romance'],['dark romance','Dark Romance'],['nonfiction','Sachbuch'],
   ['non fiction','Sachbuch'],['fiction','Belletristik'],['novel','Roman']
@@ -114,6 +116,7 @@ async function api(endpoint, method='GET', data) {
 }
 const route = (endpoint, values) => endpoint+'?'+new URLSearchParams(values);
 const average = item => item.ratings?.every(Boolean) ? item.ratings.reduce((sum,value)=>sum+value,0)/6 : null;
+const isScreen = item => item.kind==='movie'||item.kind==='series';
 const streamQuery = item => /^((movie|series):(?:imdb:tt|tmdb:)[0-9]+)$/.test(catalogID(item));
 const current = () => definitions[state.kind];
 
@@ -121,7 +124,7 @@ function cover(item) {
   const letters=item.title.trim().split(/\s+/).slice(0,2).map(word=>word[0]).join('').toUpperCase();
   const node=text('span',letters || definitions[item.kind].icon,'cover');
   node.setAttribute('aria-hidden','true');
-  const source=httpsURL(item.cover);
+  const source=coverSource(item);
   if (source) {
     const image=document.createElement('img');
     image.src=source; image.alt=''; image.loading='lazy'; image.referrerPolicy='no-referrer';
@@ -136,6 +139,7 @@ function switchCategory(kind) {
   state.kind=kind;
   state.status='';
   state.genre='';
+  state.onlyFavorites=false;
   document.body.dataset.category=kind;
   for (const tab of $('tabs').querySelectorAll('button')) {
     tab.setAttribute('aria-selected',tab.dataset.kind===kind);
@@ -185,7 +189,7 @@ function render() {
   if (!genres.some(label=>genreKey(label)===state.genre)) state.genre='';
   $('genre').replaceChildren(option('','Alle Genres'),...genres.map(genre=>option(genreKey(genre),genre)));
   $('genre').value=state.genre;
-  const visible=items.filter(item=>(!state.list||item.lists?.includes(state.list))&&(!state.status||item.status===state.status)&&(!state.genre||genreLabels(item.kind,item.genres||[]).some(genre=>genreKey(genre)===state.genre)));
+  const visible=items.filter(item=>(!state.onlyFavorites||item.favorite)&&(!state.list||item.lists?.includes(state.list))&&(!state.status||item.status===state.status)&&(!state.genre||genreLabels(item.kind,item.genres||[]).some(genre=>genreKey(genre)===state.genre)));
   visible.sort(compare);
   const onlyProviders=providerFilter();
   const cards=visible.map(card);
@@ -234,8 +238,8 @@ function card(item) {
   if (item.status==='started' && current().unit) foot.append(text('small',' · '+item.progress+(item.total?' / '+item.total:'')+' '+current().unit,'muted'));
   if (item.kind==='book' && item.genres?.length) foot.append(text('small',genreLabels(item.kind,item.genres)[0],'book-genre'));
   if (item.lists?.length) foot.append(text('small',item.lists.join(' · '),'book-genre'));
-  if (item.kind!=='book' && item.status==='want') foot.append(streamPanel(item));
-  article.append(open,foot);
+  if (isScreen(item) && item.status==='want') foot.append(streamPanel(item));
+  article.append(open,favoriteButton(item),foot);
   return article;
 }
 
@@ -330,7 +334,7 @@ function openSearch() {
   const results=text('div',null,'results');
   results.setAttribute('aria-live','polite');
   inner.append(form,results,button('Manuell hinzufügen',()=>openEditor({id:'manual:'+crypto.randomUUID(),kind,title:query.value.trim(),ratings:[0,0,0]}),'quiet'));
-  if (kind!=='book') inner.append(button('Streamingverlauf importieren',openHistory,'quiet search-import'));
+  if (kind==='movie'||kind==='series') inner.append(button('Streamingverlauf importieren',openHistory,'quiet search-import'));
   query.focus();
   form.addEventListener('submit',async event=>{
     event.preventDefault(); submit.disabled=true;
@@ -362,7 +366,7 @@ async function selectResult(item) {
   const isBook=item.kind==='book';
   const needsGenre=isBook && currentGenres.every(genre=>broadBookGenres.has(genre));
   const isbn=(item.cover||'').match(/^https:\/\/covers\.openlibrary\.org\/b\/isbn\/([0-9X]+)-[SML]\.jpg/)?.[1];
-  const lookup=streamQuery(item) || item.id.startsWith('book:ol:') ||
+  const lookup=streamQuery(item) || /^game:(steam:[0-9]+|wikidata:Q[0-9]+)$/.test(catalogID(item)) || item.id.startsWith('book:ol:') ||
     (needsGenre && (item.id.startsWith('book:open:') || (item.id.startsWith('book:dnb:') && isbn)));
   if (lookup) {
     const params={id:catalogID(item)};
@@ -467,7 +471,11 @@ function openEditor(original) {
   const inner=show(item.title||info.singular+' hinzufügen');
   const form=text('form');
   const detail=text('div',null,'detail');
-  detail.append(cover({...item,title:item.title||info.singular}));
+  const art=text('div',null,'editor-art');
+  const previewCover=customCover=>art.replaceChildren(cover({...item,customCover,title:item.title||info.singular}));
+  previewCover(item.customCover);
+  const coverChoice=customCoverEditor(item,previewCover);
+  detail.append(art);
   const fields=text('div',null,'edit-fields');
   const title=input('text','title',item.title); title.required=true; title.maxLength=250;
   const subtitle=input('text','subtitle',item.subtitle);
@@ -481,7 +489,11 @@ function openEditor(original) {
   status.value=item.status || 'want';
   fields.append(field('Titel',title),field(item.kind==='book'?'Autor / Ausgabe':'Jahr / Zusatz',subtitle),genre.panel);
   if (genre.primary) fields.append(genre.primary);
-  fields.append(field('Status',status),lists.panel,field('Persönliche Notizen',notes));
+  const favorite=input('checkbox','favorite');
+  favorite.checked=Boolean(item.favorite);
+  const favoriteField=field('Als Favorit markieren',favorite);
+  favoriteField.className='favorite-field';
+  fields.append(field('Status',status),favoriteField,coverChoice.section,lists.panel,field('Persönliche Notizen',notes));
   if (item.id.startsWith('manual:')) fields.append(field('Cover-URL (optional)',coverURL));
   const progress=input('number','progress',item.progress||0);
   const total=input('number','total',item.total||'');
@@ -500,11 +512,11 @@ function openEditor(original) {
   };
   const syncWatch=()=>{
     viewing.replaceChildren();
-    if(item.kind!=='book' && status.value==='want' && existing) viewing.append(streamPanel(item));
+    if(isScreen(item) && status.value==='want' && existing) viewing.append(streamPanel(item));
   };
   status.addEventListener('change',()=>{syncProgress();syncWatch();});
   total.addEventListener('input',syncProgress); syncProgress(); syncWatch();
-  const criteria=item.kind==='book'?ratings.book:ratings.screen;
+  const criteria=ratings[item.kind]||ratings.screen;
   criteria.forEach((label,index)=>fields.append(stars(item,index,label)));
   fields.append(text('p','Der Durchschnitt erscheint, sobald alle drei Kriterien bewertet sind.','form-note'));
   detail.append(fields); form.append(detail,viewing);
@@ -529,9 +541,12 @@ function openEditor(original) {
       genre.focus();
       return;
     }
+    if (coverChoice.loading()) { err.textContent='Warte kurz, bis das Bild vorbereitet ist.';return; }
+    const customCover=coverChoice.value();
+    if (customCover && !coverSource({customCover})) { err.textContent='Gib eine HTTPS-Bildadresse ein.';return; }
     const max=Number(total.value)||0;
     const position=status.value==='started'?Number(progress.value)||0:Math.min(item.progress||0,max||Infinity);
-    const updated={...item,title:title.value.trim(),subtitle:subtitle.value.trim(),cover:httpsURL(coverURL.value),genres,lists:lists.chosen(),notes:notes.value.trim(),status:status.value,total:max,progress:position};
+    const updated={...item,title:title.value.trim(),subtitle:subtitle.value.trim(),cover:httpsURL(coverURL.value),customCover,favorite:favorite.checked,genres,lists:lists.chosen(),notes:notes.value.trim(),status:status.value,total:max,progress:position};
     save.disabled=true;
     try {
       await api('entries','PUT',updated);
@@ -608,7 +623,7 @@ function openSettings() {
       await api('settings','PUT',{region:region.value.toUpperCase(),token:tmdb.value,watchmode:watch.value,remove:removeTmdb.checked,removeWatchmode:removeWatch.checked,providers:providers.selected()});
       state.prefs=await api('settings');
       state.streamCache.clear();
-      charts.clear();ticker.kind='';
+      charts.clear();ticker.key='';
       modal.close();render();
     } catch(error) { err.textContent=error.message; }
     finally { save.disabled=false; }
@@ -628,7 +643,7 @@ $('add').addEventListener('click',openSearch);
 $('settings').addEventListener('click',openSettings);
 $('only-providers').addEventListener('change',event=>{ state.onlyProviders=event.target.checked;render(); });
 $('only-subscriptions').addEventListener('change',event=>{ state.onlySubscriptions=event.target.checked;render(); });
-$('lists-filter').addEventListener('change',event=>{ state.list=event.target.value;render(); });
+$('favorites-filter').addEventListener('click',()=>{state.onlyFavorites=!state.onlyFavorites;render();});
 $('new-list').addEventListener('click',newCollectionList);
 $('duplicates').addEventListener('click',openDuplicates);
 $('undo-collection').addEventListener('click',undoLastCollectionChange);

@@ -1,6 +1,6 @@
 'use strict';
 
-const completeStatus = item => item.status==='seen'||(item.kind==='book'&&['read','finished'].includes(item.status));
+const completeStatus = item => ['seen','finished'].includes(item.status)||(item.kind==='book'&&item.status==='read');
 
 function acceptCollection(data) {
   state.entries=data.entries||[];
@@ -15,8 +15,17 @@ async function refreshCollection() {
 
 function collectionTools() {
   const lists=$('lists-filter');
-  lists.replaceChildren(option('','Alle Listen'),...state.lists.map(name=>option(name,name)));
-  lists.value=state.list;
+  const quickFilter=(label,active,select)=>{
+    const control=button(label,select,'quiet');
+    control.setAttribute('aria-pressed',String(active));
+    return control;
+  };
+  lists.replaceChildren(
+    quickFilter('Alle Listen',!state.list,()=>{ state.list='';render(); }),
+    ...state.lists.map(name=>quickFilter(name,state.list===name,()=>{state.list=name;render();}))
+  );
+  const favorite=$('favorites-filter');
+  favorite.setAttribute('aria-pressed',String(state.onlyFavorites));
   $('view').value=state.view;
   $('undo-collection').disabled=!state.undo;
   $('undo-collection').title=state.undo?'Rückgängig: '+state.undo:'';
@@ -203,4 +212,25 @@ function collectionStatistics() {
   panel.replaceChildren(title,counts);
   if (undated) panel.append(text('p',undated+' ältere Abschlüsse ohne Datum sind in „Alle Jahre“ enthalten.','form-note'));
   panel.append(sections);
+}
+
+function favoriteButton(item) {
+  const control=button(item.favorite?'♥':'♡',async()=>{
+    control.disabled=true;
+    try {
+      acceptCollection(await api('collection/favorite','PUT',{id:item.id,favorite:!item.favorite}));
+      render();
+      for (const favorite of shelf.querySelectorAll('.favorite-toggle')) {
+        if (favorite.dataset.entryId===item.id) { favorite.focus({preventScroll:true});break; }
+      }
+    } catch(e) {
+      $('notice').textContent=e.message;
+      control.disabled=false;
+    }
+  },'favorite-toggle');
+  control.dataset.entryId=item.id;
+  control.title=item.favorite?'Aus Favoriten entfernen':'Zu Favoriten hinzufügen';
+  control.setAttribute('aria-label',control.title+': '+item.title);
+  control.setAttribute('aria-pressed',String(Boolean(item.favorite)));
+  return control;
 }
