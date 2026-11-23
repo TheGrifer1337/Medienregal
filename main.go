@@ -71,21 +71,22 @@ type library struct {
 }
 
 type app struct {
-	mu         sync.Mutex
-	path       string
-	data       library
-	token      string
-	exit       chan struct{}
-	update     updateCheck
-	lifetime   context.Context
-	fullscreen chan bool
+	mu            sync.Mutex
+	path          string
+	data          library
+	token         string
+	exit          chan struct{}
+	update        updateCheck
+	lifetime      context.Context
+	fullscreen    chan bool
+	launcherGames map[string]entry
 }
 
 var statuses = map[string][]string{
 	"movie":  {"seen", "want", "started"},
 	"series": {"seen", "started", "want"},
 	"book":   {"read", "started", "finished", "want"},
-	"game":   {"started", "finished", "want"},
+	"game":   {"started", "finished", "want", "library"},
 }
 
 func readLibrary(path string) (library, error) {
@@ -298,6 +299,8 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("GET /api/details", a.details)
 	mux.HandleFunc("GET /api/streaming", a.streaming)
 	mux.HandleFunc("GET /api/collection", a.collection)
+	mux.HandleFunc("GET /api/launchers", a.previewLaunchers)
+	mux.HandleFunc("POST /api/launchers", a.importLaunchers)
 	mux.HandleFunc("PUT /api/collection/favorite", a.favoriteEntry)
 	mux.HandleFunc("PUT /api/lists", a.customList)
 	mux.HandleFunc("PUT /api/view", a.collectionView)

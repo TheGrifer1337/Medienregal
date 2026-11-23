@@ -4,7 +4,7 @@ const definitions = {
   movie: { title:'Filme', singular:'Film', icon:'▤', states:{ seen:'Angesehen', want:'Möchte ich sehen', started:'Angefangen' } },
   series: { title:'Serien', singular:'Serie', icon:'▣', unit:'Folgen', states:{ seen:'Gesehen', started:'Angefangen', want:'Möchte ich sehen' } },
   book: { title:'Bücher', singular:'Buch', icon:'▥', unit:'Seiten', states:{ read:'Gelesen', started:'Angefangen', finished:'Beendet', want:'Möchte ich lesen' } },
-  game:{ title:'Spiele',singular:'Spiel',icon:'🎮',states:{want:'Möchte ich spielen',started:'Spiele ich gerade',finished:'Durchgespielt'} }
+  game:{ title:'Spiele',singular:'Spiel',icon:'🎮',states:{library:'In Bibliothek',want:'Möchte ich spielen',started:'Spiele ich gerade',finished:'Durchgespielt'} }
 };
 const ratings = { game:['Qualität','Gameplay','Storyline'], screen:['Qualität','Storyline','Allgemein'], book:['Storyline','Charakterentwicklung','Schreibstil'] };
 const state = { kind:'movie', entries:[], status:'', genre:'', onlyFavorites:false, sort:'title', onlyProviders:false, onlySubscriptions:false, lists:[], list:'', view:'large', undo:'', statsYear:'', prefs:null, streamCache:new Map(), streamJobs:[], activeJobs:0 };
@@ -179,6 +179,7 @@ function render() {
   const info=current();
   const items=state.entries.filter(item=>item.kind===state.kind);
   $('heading').textContent=info.title;
+  $('launcher-import').hidden=state.kind!=='game';
   $('count').textContent=items.length+' '+(items.length===1?'gespeicherter Titel':'gespeicherte Titel');
   $('status-filters').replaceChildren(...[['','Alle'],...Object.entries(info.states)].map(([value,label])=>{
     const node=button(label,()=>{ state.status=value; render(); });
@@ -235,6 +236,7 @@ function card(item) {
   open.append(cover(item),body);
   const foot=text('div',null,'card-foot');
   foot.append(text('span',current().states[item.status],'chip'));
+  if (item.kind==='game'&&item.source) foot.append(text('small',' · '+item.source,'muted'));
   if (item.status==='started' && current().unit) foot.append(text('small',' · '+item.progress+(item.total?' / '+item.total:'')+' '+current().unit,'muted'));
   if (item.kind==='book' && item.genres?.length) foot.append(text('small',genreLabels(item.kind,item.genres)[0],'book-genre'));
   if (item.lists?.length) foot.append(text('small',item.lists.join(' · '),'book-genre'));
@@ -335,6 +337,7 @@ function openSearch() {
   results.setAttribute('aria-live','polite');
   inner.append(form,results,button('Manuell hinzufügen',()=>openEditor({id:'manual:'+crypto.randomUUID(),kind,title:query.value.trim(),ratings:[0,0,0]}),'quiet'));
   if (kind==='movie'||kind==='series') inner.append(button('Streamingverlauf importieren',openHistory,'quiet search-import'));
+  if (kind==='game') inner.append(button('Installierte Spiele importieren',openLauncherImport,'quiet search-import'));
   query.focus();
   form.addEventListener('submit',async event=>{
     event.preventDefault(); submit.disabled=true;
@@ -640,6 +643,7 @@ document.addEventListener('click', event=>{
   api('open-link','POST',{url:address}).catch(error=>{ $('notice').textContent=error.message; });
 });
 $('add').addEventListener('click',openSearch);
+$('launcher-import').addEventListener('click',openLauncherImport);
 $('settings').addEventListener('click',openSettings);
 $('only-providers').addEventListener('change',event=>{ state.onlyProviders=event.target.checked;render(); });
 $('only-subscriptions').addEventListener('change',event=>{ state.onlySubscriptions=event.target.checked;render(); });

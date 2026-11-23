@@ -230,3 +230,6 @@ body[data-category=stats] main{padding-bottom:55px}
 body[data-category=game]{--theme:#bbd6fb;--theme-dim:#2d374c}
 body[data-category=game] .hero-art::after{background:linear-gradient(90deg,#131526 0%,#1c243bc7 42%,#13152622 80%)}
 body[data-category=game] .series-scene{opacity:.88;transform:none}
+
+.launcher-rows .history-row .chip{flex:none}
+#launcher-import{background:#161329e8;border-color:#74849c;color:#e7eef9;margin:.22rem 0}

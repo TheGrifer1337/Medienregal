@@ -30,6 +30,10 @@ Im Reiter **Spiele** kannst du Titel über Steam suchen oder selbst anlegen. Spi
 
 Mit **Chart-Genre** kannst du die Jahresliste auf ein Genre eingrenzen. Beim Start und beim Wechsel des Medienbereichs werden zuerst alle Genres gezeigt. Die sichtbare Jahresliste lädt nach Ablauf ihres Zwischenspeichers erneut, sobald sie frei sichtbar ist. Eigene Listen sind direkt als Filter sichtbar. Das Herz auf jeder Titelkarte markiert Favoriten. Über **Eigenes Cover** im Titeldialog kannst du eine lokale Bilddatei oder HTTPS-Bildadresse wählen und später zur Kataloggrafik zurückkehren.
 
+### Installierte Spiele importieren
+
+Im Reiter **Spiele → Installierte Spiele importieren** scannt die Mediathek die auf diesem Windows-PC installierten Titel aus Steam, dem Epic Games Launcher und der Xbox-App. Die Vorschau lässt sich nach Launcher oder Titel filtern. Ausgewählte Titel erhalten beim Import den Status **In Bibliothek**. Bereits vorhandene Titel werden über ihre Katalog-ID oder ihren Namen erkannt. Der Import kann über **Rückgängig** zurückgenommen werden. Die Erkennung liest lokale Installationsdaten. Bibliotheken in Online-Konten ohne lokale Installation und Spiele auf der Xbox-Konsole sind davon ausgenommen.
+
 ## Windows-Installer und Veröffentlichungen
 
 Voraussetzungen für den lokalen Build unter Linux sind Go ab 1.23, Bash, cURL und NSIS.
