@@ -1,6 +1,6 @@
 # Mediathek by Maximilian
 
-Du wolltest immer alle deine Medien Sortiert haben hier Bitte ein Praktische Mediathek mit vielen Funktionen :D
+Du wolltest immer alle deine Medien Sortiert haben hier, bitte, eine praktische Mediathek mit vielen Funktionen :D
 
 Mediathek by Maximilian ist eine persönliche Sammlung für Filme, Serien, Anime, Bücher und Manga. Die Windows-EXE startet in einem eigenen Windows-Fenster mit eingebetteter WebView2-Oberfläche. Falls die Laufzeit fehlt, installiert das Setup sie automatisch mit Internetverbindung. Die Sammlung liegt lokal unter `%APPDATA%\Medienregal\sammlung.json`. Für die Datensicherung kann diese Datei kopiert werden. Die Deinstallation über Windows behält die Sammlung.
 
