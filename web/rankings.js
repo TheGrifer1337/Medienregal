@@ -145,7 +145,11 @@ async function openRankedTitle(initial) {
   const description=text('p',initial.description||'Kurzbeschreibung wird geladen …','ranking-description');
   const genres=text('p',genreLabels(initial.kind,initial.genres||[]).join(' · '),'form-note');
   info.append(text('p',initial.subtitle,'muted'),genres,description);
-  titleCard.append(cover({...initial,customCover:existing?.customCover}),info);
+  const coverCredit=text('p',null,'form-note');
+  info.append(coverCredit);
+  const art=text('div');
+  art.append(cover({...initial,cover:existing?.cover||initial.cover,customCover:existing?.customCover},coverCredit));
+  titleCard.append(art,info);
   inner.append(titleCard);
   const player=text('div',null,'ranking-player');
   const film=isScreen(initial);
@@ -185,6 +189,9 @@ async function openRankedTitle(initial) {
     if (!modal.open||!inner.isConnected) return;
     item={...initial, description:found.description||initial.description, cover:found.cover||initial.cover,
       genres:found.genres?.length?found.genres:initial.genres,total:found.total||initial.total, aliases:found.aliases||initial.aliases};
+    if (!existing?.cover && item.cover!==initial.cover) {
+      art.replaceChildren(cover({...item,customCover:existing?.customCover},coverCredit));
+    }
     description.textContent=item.description||'Keine Kurzbeschreibung verfügbar.';
     genres.textContent=genreLabels(item.kind,item.genres||[]).join(' · ');
     player.replaceChildren();

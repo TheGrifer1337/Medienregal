@@ -297,6 +297,7 @@ func (a *app) routes() *http.ServeMux {
 	mux.HandleFunc("PUT /api/settings", a.preferences)
 	mux.HandleFunc("GET /api/search", a.search)
 	mux.HandleFunc("GET /api/details", a.details)
+	mux.HandleFunc("GET /api/cover", a.lookupCover)
 	mux.HandleFunc("GET /api/streaming", a.streaming)
 	mux.HandleFunc("GET /api/collection", a.collection)
 	mux.HandleFunc("GET /api/launchers", a.previewLaunchers)

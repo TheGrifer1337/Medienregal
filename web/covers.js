@@ -68,3 +68,112 @@ function customCoverEditor(item,refresh) {
   section.append(field('Bilddatei auswählen',file),field('Oder HTTPS-Bildadresse',address),status,reset);
   return {section,value,loading:()=>loading};
 }
+
+const coverCache=new Map();
+const coverQueue=[];
+let coverRequests=0;
+const pendingCovers=new Map();
+const visibleCovers=new IntersectionObserver(changes=>{
+  for (const {target,isIntersecting} of changes) {
+    if (!isIntersecting) continue;
+    const search=pendingCovers.get(target);
+    visibleCovers.unobserve(target);
+    pendingCovers.delete(target);
+    if (target.isConnected) search?.();
+  }
+});
+new MutationObserver(()=>{
+  for (const node of pendingCovers.keys()) {
+    if (node.isConnected) continue;
+    visibleCovers.unobserve(node);
+    pendingCovers.delete(node);
+  }
+}).observe(document.body,{childList:true,subtree:true});
+
+function runCoverQueue() {
+  while (coverRequests<3 && coverQueue.length) {
+    const {endpoint,resolve,saved}=coverQueue.shift();
+    coverRequests++;
+    api(endpoint).then(items=>{
+      saved.until=Date.now()+(items.length?3600000:180000);
+      resolve(items);
+    }).catch(()=>{
+      saved.until=Date.now()+30000;
+      resolve([]);
+    }).finally(()=>{
+      coverRequests--;
+      runCoverQueue();
+    });
+  }
+}
+
+function findArtwork(item) {
+  const params=new URLSearchParams({kind:item.kind,title:item.title,subtitle:(item.subtitle||'').slice(0,260)});
+  const id=item.catalogId||item.id;
+  if (id?.startsWith(item.kind+':')) params.set('id',id);
+  const isbn=(item.cover||'').match(/^https:\/\/covers\.openlibrary\.org\/b\/isbn\/([0-9X]+)-[SML]\.jpg/)?.[1];
+  if (isbn) params.set('isbn',isbn);
+  for (const alias of (item.aliases||[]).slice(0,4)) params.append('alias',alias.slice(0,200));
+  while (String(params).length>4000) {
+    if (params.has('alias')) params.delete('alias');
+    else if (params.has('subtitle')) params.delete('subtitle');
+    else return Promise.resolve([]);
+  }
+  const endpoint='cover?'+params;
+  const cached=coverCache.get(endpoint);
+  if (cached?.until>Date.now()) return cached.promise;
+  if (coverCache.size>=500) coverCache.delete(coverCache.keys().next().value);
+  const saved={until:Infinity};
+  saved.promise=new Promise(resolve=>coverQueue.push({endpoint,resolve,saved}));
+  coverCache.set(endpoint,saved);
+  runCoverQueue();
+  return saved.promise;
+}
+
+function cover(item,credit) {
+  const letters=item.title.trim().split(/\s+/).slice(0,2).map(word=>Array.from(word)[0]).join('').toUpperCase();
+  const node=text('span',letters||definitions[item.kind].icon,'cover');
+  node.setAttribute('aria-hidden','true');
+  credit?.replaceChildren();
+  const tried=new Set();
+
+  function showArtwork(candidate,failed) {
+    const url=httpsURL(candidate.url)||((candidate.url||'').startsWith('data:image/jpeg;base64,')?candidate.url:'');
+    if (!url||tried.has(url)) { failed();return; }
+    tried.add(url);
+    const image=document.createElement('img');
+    image.alt='';image.loading='lazy';image.referrerPolicy='no-referrer';
+    const remove=()=>{ image.remove(); if (node.isConnected) failed(); };
+    image.addEventListener('load',()=>{
+      if (image.naturalWidth<=1||image.naturalHeight<=1) {remove();return;}
+      if (!candidate.source) return;
+      node.title='Cover von '+candidate.source;
+      if (credit && node.isConnected) {
+        const label='Cover von '+candidate.source;
+        credit.replaceChildren(httpsURL(candidate.page)?link(candidate.page,label):label);
+      }
+    },{once:true});
+    image.addEventListener('error',remove,{once:true});
+    node.append(image);
+    image.src=url;
+  }
+
+  function search() {
+    if (!item.title.trim()) return;
+    pendingCovers.set(node,async()=>{
+      const results=await findArtwork(item);
+      if (!node.isConnected) return;
+      const alternatives=results.filter(candidate=>httpsURL(candidate.url));
+      const next=()=>{ if (alternatives.length) showArtwork(alternatives.shift(),next); };
+      next();
+    });
+    visibleCovers.observe(node);
+  }
+
+  const standard=httpsURL(item.cover);
+  const custom=coverSource({customCover:item.customCover});
+  const showStandard=()=>standard?showArtwork({url:standard},search):search();
+  if (custom) showArtwork({url:custom},showStandard);
+  else showStandard();
+  return node;
+}

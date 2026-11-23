@@ -47,3 +47,7 @@ Der Standardordner ist `%LOCALAPPDATA%\Programs\Medienregal`. Im Installer kann 
 Für GitHub ist ein eigenes öffentliches Repository vorgesehen. Lege die Dateien aus diesem Ordner im Hauptzweig `main` ab. Der Workflow veröffentlicht beim Push von `VERSION` den Installer als Release und kann für die erste Veröffentlichung auch manuell unter **Actions → Windows-Release** gestartet werden. Die `VERSION`-Datei erhöht sich für jedes Update um einen Schritt. Auf 1.9 folgt 2.0. Der erste lokale Installer ist fest auf `TheGrifer1337/Medienregal` eingestellt. Bei abweichendem Reponamen installiere zuerst den dort veröffentlichten Installer.
 
 Die App prüft beim Start und über **Einstellungen → Nach Updates suchen** alle öffentlichen stabilen Releases ihres Repositories und lädt die höchste neuere Version mit gültiger SHA-256-Prüfsumme. Wenn das Programm geschlossen wird, installiert es das fertig geladene Update im Hintergrund in denselben Ordner. Ein Programmneustart ist erst für die Nutzung der neuen Version nötig.
+
+### Automatische Coversuche
+
+Fehlt das Cover eines sichtbaren Titels oder lässt sich das Bild nicht laden, sucht die Mediathek nach passenden Bildern in weiteren Online-Katalogen. Je nach Titelart nutzt sie Google Books und Open Library, TVmaze, TMDB (mit hinterlegtem Token), MetaHub, Cinemeta, Steam und Wikimedia Commons. Bekannte Kennungen wie ISBN oder IMDb-ID helfen beim Abgleich. Eigene Cover werden zuerst angezeigt. In der Detailansicht steht die Quelle eines gefundenen Ersatzcovers.

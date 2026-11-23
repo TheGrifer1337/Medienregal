@@ -201,7 +201,7 @@ dialog::backdrop{background:#0c070ed2}
 .chart-caption strong{font-size:.77rem;line-height:1.12;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .chart-rank{font-size:.63rem;color:#f4c194;letter-spacing:.13em}
 .ranking-detail{display:grid;grid-template-columns:minmax(60px,95px) 1fr;gap:16px}
-.ranking-detail>.cover{border-radius:6px;align-self:start}
+.ranking-detail>div>.cover{border-radius:6px;align-self:start}
 .ranking-description{white-space:pre-line;max-height:11rem;overflow:auto;margin:.5rem 0;color:#ede0e7}
 .ranking-player{margin:.9rem 0}
 .trailer-stage{max-width:460px;background:#100a13;padding:.45rem;border:1px solid #79506a;border-radius:7px}

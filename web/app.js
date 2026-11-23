@@ -120,20 +120,6 @@ const isScreen = item => item.kind==='movie'||item.kind==='series';
 const streamQuery = item => /^((movie|series):(?:imdb:tt|tmdb:)[0-9]+)$/.test(catalogID(item));
 const current = () => definitions[state.kind];
 
-function cover(item) {
-  const letters=item.title.trim().split(/\s+/).slice(0,2).map(word=>word[0]).join('').toUpperCase();
-  const node=text('span',letters || definitions[item.kind].icon,'cover');
-  node.setAttribute('aria-hidden','true');
-  const source=coverSource(item);
-  if (source) {
-    const image=document.createElement('img');
-    image.src=source; image.alt=''; image.loading='lazy'; image.referrerPolicy='no-referrer';
-    image.addEventListener('error',()=>image.remove(),{once:true});
-    node.append(image);
-  }
-  return node;
-}
-
 function switchCategory(kind) {
   if (kind===state.kind) return;
   state.kind=kind;
@@ -475,14 +461,18 @@ function openEditor(original) {
   const form=text('form');
   const detail=text('div',null,'detail');
   const art=text('div',null,'editor-art');
-  const previewCover=customCover=>art.replaceChildren(cover({...item,customCover,title:item.title||info.singular}));
-  previewCover(item.customCover);
+  const coverCredit=text('p',null,'form-note');
+  const previewCover=customCover=>{
+    art.replaceChildren(cover({...item,customCover,title:title.value.trim(),subtitle:subtitle.value,cover:coverURL.value},coverCredit),coverCredit);
+  };
   const coverChoice=customCoverEditor(item,previewCover);
   detail.append(art);
   const fields=text('div',null,'edit-fields');
   const title=input('text','title',item.title); title.required=true; title.maxLength=250;
   const subtitle=input('text','subtitle',item.subtitle);
   const coverURL=input('url','cover',item.cover);
+  previewCover(item.customCover);
+  for (const field of [title,subtitle,coverURL]) field.addEventListener('change',()=>previewCover(coverChoice.value()));
   const genre=genrePicker(item);
   const lists=listPicker(item);
   const notes=text('textarea');
@@ -600,7 +590,9 @@ function openSettings() {
   imports.append(button('Streamingverlauf importieren',openHistory,'quiet'),
     button('Streamingimport rückgängig machen',openHistoryUndo,'quiet'),
     button('Importierte Titel vervollständigen',()=>openEnrichment(),'quiet'));
-  inner.append(update.controls,imports);
+  const credit=text('p','Serienbilder von ','form-note');
+  credit.append(link('https://www.tvmaze.com/','TVmaze'), ' · ',link('https://creativecommons.org/licenses/by-sa/4.0/','CC BY-SA'));
+  inner.append(update.controls,imports,credit);
   update.refresh();
   const form=text('form',null,'settings-form');
   const providers=providerPicker();
